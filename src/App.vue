@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="h-screen p-4">
     <sankey-chart />
   </div>
 </template>
