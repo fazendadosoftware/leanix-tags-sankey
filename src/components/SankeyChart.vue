@@ -20,7 +20,7 @@ const props = defineProps({
 const { data, config, duration, id, advanced } = toRefs(props)
 
 const root: Ref<HTMLCanvasElement | null> = ref(null)
-const emit = defineEmits(['beforeRender', 'rendered'])
+const emit = defineEmits(['beforeRender', 'rendered', 'mouseover', 'mouseleave', 'click'])
 
 const name = 'chart-sunkey'
 const generator = chartSankey()
@@ -33,6 +33,18 @@ const watcher = () => { unwatcher(); unwatch = watch([data, config], () => updat
 const update = (options?: { skipTransition: boolean }) => {
   const _root = select(unref(root))
   if (_root === null) return
+
+  // add event retransmitters to links and nodes
+  selectAll('.d2b-sankey-link')
+    .on('mouseover', (event, link) => emit('mouseover', { event, link }))
+    .on('mouseleave', (event, link) => emit('mouseleave', { event, link }))
+    .on('click', (event, link) => emit('click', { event, link }))
+
+  selectAll('.d2b-sankey-node')
+    .on('mouseover', (event, node) => emit('mouseover', { event, node }))
+    .on('mouseleave', (event, node) => emit('mouseleave', { event, node }))
+    .on('click', (event, node) => emit('click', { event, node }))
+
   const _configCallback = unref(config)
   const _data = unref(data)
   const _duration = unref(duration)

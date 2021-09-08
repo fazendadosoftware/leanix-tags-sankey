@@ -34,6 +34,10 @@ const initializeReport = async (): Promise<void> => {
   await Promise.all([lx.ready(getReportConfig()), loadAxiformaFonts()])
 }
 
+const clickHandler = (event: any) => {
+  console.log('CLICKED', event)
+}
+
 const chartData = {
   nodes: [
     { name: 'Node A' },
@@ -61,11 +65,12 @@ const chartConfig = (chart: any) => {
 
   chart
     .sankey()
-    .nodeDraggableY(true)
+    .nodeDraggableY(false)
 }
 
 export default (): UseReport => ({
   initializeReport,
+  clickHandler,
   chartData,
   chartConfig
 })

@@ -1,6 +1,9 @@
 <template>
   <div class="h-screen p-4">
-    <sankey-chart :data="chartData" :config="chartConfig" />
+    <sankey-chart
+      :data="chartData"
+      :config="chartConfig"
+      @click="clickHandler"/>
   </div>
 </template>
 
@@ -10,6 +13,6 @@ import SankeyChart from './components/SankeyChart.vue'
 
 // https://github.com/d2bjs/d2b/blob/master/src/scripts/chart/sunburst.js#L89
 // check events here...
-const { initializeReport, chartData, chartConfig } = useReport()
+const { initializeReport, chartData, chartConfig, clickHandler } = useReport()
 initializeReport()
 </script>
