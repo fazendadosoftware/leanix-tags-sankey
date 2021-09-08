@@ -1,78 +1,72 @@
 <template>
-  <div class="relative h-full">
-    <canvas ref="canvas" />
-  </div>
+  <div :class="['vue-d2b-container', `vue-d2b-${name}`]" ref="root"/>
 </template>
 
 <script lang="ts" setup>
-import { ref, unref, onMounted } from 'vue'
-import { Chart, ChartEvent, ActiveElement, LinearScale } from 'chart.js'
-import { SankeyController, Flow } from 'chartjs-chart-sankey'
+import { ref, unref, Ref, toRefs, PropType, watch, onMounted, onUnmounted } from 'vue'
+import { id as generateId, chartSankey } from 'd2b'
+import { ChartSankeyData } from 'd2b/src/types'
+import { select, selectAll } from 'd3-selection'
+import 'd3-transition'
 
-const canvas = ref(null)
-Chart.register(LinearScale, SankeyController, Flow)
-
-onMounted(() => {
-  // @ts-ignore
-  const ctx = unref(canvas.value)?.getContext('2d')
-
-  const colors: Record<string, string> = {
-    Oil: 'black',
-    Coal: 'gray',
-    'Fossil Fuels': 'slategray',
-    Electricity: 'blue',
-    Energy: 'orange'
-  }
-
-  const priority: Record<string, number> = {
-    Oil: 1,
-    'Narural Gas': 2,
-    Coal: 3,
-    'Fossil Fuels': 1,
-    Electricity: 2,
-    Energy: 1
-  }
-
-  const labels: Record<string, string> = {
-    Oil: 'black gold (label changed) oil'
-  }
-
-  const getColor = (name: string) => colors[name] || 'green'
-
-  const chart = new Chart(ctx, {
-    type: 'sankey',
-    data: {
-      datasets: [
-        {
-          data: [
-            { from: 'Oil', to: 'Fossil Fuels', flow: 15 },
-            { from: 'Natural Gas', to: 'Fossil Fuels', flow: 20 },
-            { from: 'Coal', to: 'Fossil Fuels', flow: 25 },
-            { from: 'Coal', to: 'Electricity', flow: 25 },
-            { from: 'Fossil Fuels', to: 'Energy', flow: 60 },
-            { from: 'Electricity', to: 'Energy', flow: 25 }
-          ],
-          priority,
-          labels,
-          colorFrom: (c) => getColor(c.dataset.data[c.dataIndex].from),
-          colorTo: (c) => getColor(c.dataset.data[c.dataIndex].to),
-          colorMode: 'gradient',
-          borderWidth: 2,
-          borderColor: 'black'
-        }
-      ]
-    },
-    options: {
-      animation: false,
-      responsive: true,
-      maintainAspectRatio: false,
-      onClick: (event: ChartEvent, elements: ActiveElement[]) => {
-        const { element: { from = null, to = null, flow = null } = {} } = elements[0] ?? {}
-        // console.log('HOVER', event)
-        console.log('ELEMENTS', from, to, flow)
-      }
-    }
-  })
+const props = defineProps({
+  data: { type: Object as PropType<ChartSankeyData>, required: true },
+  config: Function as PropType<(chart: any) => void>,
+  duration: { type: Number, default: 250 },
+  id: { type: String, default: generateId() },
+  advanced: { type: Boolean }
 })
 
+const { data, config, duration, id, advanced } = toRefs(props)
+
+const root: Ref<HTMLCanvasElement | null> = ref(null)
+const emit = defineEmits(['beforeRender', 'rendered'])
+
+const name = 'chart-sunkey'
+const generator = chartSankey()
+
+let unwatch = () => {}
+
+const unwatcher = () => { if (typeof unwatch === 'function') unwatch() }
+const watcher = () => { unwatcher(); unwatch = watch([data, config], () => update(), { deep: true }) }
+
+const update = (options?: { skipTransition: boolean }) => {
+  const _root = select(unref(root))
+  if (_root === null) return
+  const _configCallback = unref(config)
+  const _data = unref(data)
+  const _duration = unref(duration)
+  const _generator = unref(advanced) ? generator.advanced : generator
+
+  unwatcher()
+  emit('beforeRender', _root, generator)
+
+  if (typeof _configCallback === 'function') _configCallback(_generator)
+  _root.datum(_data)
+  if (options?.skipTransition) _root.call(_generator)
+  else _root.transition().duration(_duration).call(_generator)
+
+  emit('rendered', _root, _generator)
+  watcher()
+}
+
+const updateNow = () => update({ skipTransition: true })
+const updateDefer = () => setTimeout(updateNow, 0)
+
+onMounted(() => {
+  updateDefer()
+  select(window).on(`resize.${id}`, updateDefer)
+})
+
+onUnmounted(() => {
+  selectAll('.d2b-tooltip').remove()
+  select(window).on(`resize.${id}`, null)
+})
 </script>
+
+<style>
+  .vue-d2b-container {
+    height: 100%;
+    width: 100%;
+  }
+</style>

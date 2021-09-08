@@ -8,11 +8,13 @@
   },
   "dependencies": {
     "@leanix/reporting": "^0.4.87",
-    "chart.js": "^3.5.1",
-    "chartjs-chart-sankey": "^0.8.0",
+    "d2b": "^1.0.12",
+    "d3": "^7.0.1",
+    "d3-selection": "^3.0.0",
     "vue": "^3.2.10"
   },
   "devDependencies": {
+    "@types/d3": "^7.0.0",
     "@typescript-eslint/eslint-plugin": "^4.31.0",
     "@typescript-eslint/parser": "^4.31.0",
     "@vitejs/plugin-vue": "^1.6.2",
