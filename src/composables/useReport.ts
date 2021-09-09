@@ -2,6 +2,7 @@ import { ref, unref, Ref, watch, computed, ComputedRef } from 'vue'
 import { scale } from 'chroma-js'
 import { print } from 'graphql/language/printer'
 import debounce from 'lodash.debounce'
+import cloneDeep from 'lodash.clonedeep'
 import isequal from 'lodash.isequal'
 import '@leanix/reporting'
 import { ChartSankeyConfig, ChartSankeyData, ChartSankeyNodeData, ChartSankeyLinkData } from 'd2b/src/types'
@@ -187,7 +188,6 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
   lx.showSpinner()
 
   const requiredTags = tagsByTagGroupIndex[tagGroupId]
-
   const facetFilters = [{ facetKey: 'FactSheetTypes', keys: [factSheetType] }]
   facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
 
@@ -195,11 +195,25 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
   const query = await import('@/graphql/FetchDatasetQuery.gql').then(query => print(query.default))
 
   try {
-    const variables = JSON.stringify({ allFactSheetsFilter })
-    console.log('VARIABLES', variables)
-    const factSheets = await lx.executeGraphQL(query, variables)
-      .then(({ taggedFactSheets: { edges: taggedFactSheets } }) => (taggedFactSheets.map(({ node }: { node: any }) => node)))
-    const dataset: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> } = factSheets
+    const taggedFactSheetsFilter = cloneDeep(allFactSheetsFilter)
+
+    if (!Array.isArray(taggedFactSheetsFilter.facetFilters)) taggedFactSheetsFilter.facetFilters = []
+    if (requiredTags !== null) taggedFactSheetsFilter.facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
+
+    const variables = JSON.stringify({ allFactSheetsFilter, taggedFactSheetsFilter })
+
+    const { totalCount: totalFactSheetCount, taggedFactSheets }: { totalCount: number, taggedFactSheets: FactSheetNode[] } = await lx.executeGraphQL(query, variables)
+      .then(({ totalFactSheetCount: { totalCount }, taggedFactSheets: { edges: taggedFactSheets } }) => ({
+        totalCount,
+        taggedFactSheets: taggedFactSheets.map(({ node }: { node: any }) => node)
+      }))
+
+    // eslint-disable-next-line
+    const totalCount = totalFactSheetCount
+    // eslint-disable-next-line
+    const missingCount = totalFactSheetCount - taggedFactSheets.length
+
+    const dataset: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> } = taggedFactSheets
       .reduce((accumulator: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> }, factSheet: FactSheetNode) => {
         const { type, tags } = factSheet
         const factSheetType = lx.translateFactSheetType(type, 'plural')

@@ -1,5 +1,8 @@
-query FetchDatasetQuery($allFactSheetsFilter: FilterInput) {
-  taggedFactSheets: allFactSheets(filter: $allFactSheetsFilter) {
+query FetchDatasetQuery($allFactSheetsFilter: FilterInput, $taggedFactSheetsFilter: FilterInput) {
+  totalFactSheetCount: allFactSheets(filter: $allFactSheetsFilter) {
+    totalCount
+  }
+  taggedFactSheets: allFactSheets(filter: $taggedFactSheetsFilter) {
     totalCount
     edges {
       node {
