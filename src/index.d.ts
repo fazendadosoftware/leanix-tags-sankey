@@ -49,6 +49,8 @@ interface Dataset {
 
 interface FetchDatasetParameters {
   factSheetType: string | null
+  tagGroupId: string | null
+  tagsByTagGroupIndex: TagGroupTagsIndex
   filter: Filter | null
 }
 
@@ -60,6 +62,7 @@ interface FactSheetTypeViewModel {
 interface ReportCustomState {
   factSheetType?: string | null
   showLabels?: boolean
+  selectedTagGroupId?: TagGroupId | null
 }
 
 interface ReportSavedState {

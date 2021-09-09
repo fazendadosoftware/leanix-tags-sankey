@@ -10,6 +10,10 @@ import { ChartSankeyConfig, ChartSankeyData, ChartSankeyNodeData, ChartSankeyLin
 const factSheetType: Ref<string | null> = ref(null)
 // holder for valid tag groups for the given factsheet type
 const tagGroups: Ref<TagGroup[]> = ref([])
+// index of tags by tagGroupId
+const tagsByTagGroupIndex: Ref<TagGroupTagsIndex> = ref({})
+// holder for the selected tagGroup id
+const selectedTagGroupId: Ref<TagGroupId | null> = ref(null)
 // holder for lxr filter state
 const filter: Ref<Filter | null> = ref(null)
 // holder for chart data
@@ -23,7 +27,8 @@ const zoomable: Ref<boolean> = ref(true)
 // computed report state, will triger a lx.update on every change through an watcher
 const reportState: ComputedRef<ReportCustomState> = computed(() => ({
   factSheetType: unref(factSheetType),
-  showLabels: unref(showLabels)
+  showLabels: unref(showLabels),
+  selectedTagGroupId: unref(selectedTagGroupId)
 }))
 
 /**
@@ -95,6 +100,17 @@ const getReportConfig = (fixedFactSheetType?: string): lxr.ReportConfiguration =
   if (fixedFactSheetType === undefined) fixedFactSheetType = unref(factSheetType) ?? ''
   validateFactSheetType(fixedFactSheetType)
   tagGroups.value = getTagGroupsForFactSheetType(fixedFactSheetType)
+  tagsByTagGroupIndex.value = unref(tagGroups)
+    .reduce((accumulator: Record<TagGroupId, TagId[]>, { id: tagGroupId, tags }) => ({ ...accumulator, [tagGroupId]: tags.map(({ id }) => id) }), {})
+  const tagGroupEntries = unref(tagGroups).map(({ id, name }) => ({ id, label: name }))
+
+  let _selectedTagGroupId = unref(selectedTagGroupId)
+  if (_selectedTagGroupId !== null) {
+    // validate selectedTagGroupId
+    const validTagGroupIds = tagGroupEntries.map(({ id }) => id)
+    if (!validTagGroupIds.includes(_selectedTagGroupId)) _selectedTagGroupId = null
+  }
+  const defaultSelectedTagGroupId = _selectedTagGroupId ?? tagGroupEntries[0].id
 
   return {
     allowTableView: false,
@@ -118,7 +134,6 @@ const getReportConfig = (fixedFactSheetType?: string): lxr.ReportConfiguration =
         }
       }
     },
-    /*
     ui: {
       elements: {
         root: {
@@ -152,7 +167,6 @@ const getReportConfig = (fixedFactSheetType?: string): lxr.ReportConfiguration =
         return undefined
       }
     },
-    */
     facets: [{
       key: fixedFactSheetType,
       fixedFactSheetType,
@@ -164,18 +178,25 @@ const getReportConfig = (fixedFactSheetType?: string): lxr.ReportConfiguration =
 }
 
 const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankeyData> => {
-  const { factSheetType, filter: allFactSheetsFilter } = params
+  const { factSheetType, tagGroupId, tagsByTagGroupIndex, filter: allFactSheetsFilter } = params
 
   if (factSheetType === null) throw Error('factsheetType is null')
+  else if (tagGroupId === null) throw Error('selectedTagGroupId is null')
   else if (allFactSheetsFilter === null) throw Error('filter is null')
 
   lx.showSpinner()
+
+  const requiredTags = tagsByTagGroupIndex[tagGroupId]
+
+  const facetFilters = [{ facetKey: 'FactSheetTypes', keys: [factSheetType] }]
+  facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
 
   // @ts-expect-error
   const query = await import('@/graphql/FetchDatasetQuery.gql').then(query => print(query.default))
 
   try {
     const variables = JSON.stringify({ allFactSheetsFilter })
+    console.log('VARIABLES', variables)
     const factSheets = await lx.executeGraphQL(query, variables)
       .then(({ taggedFactSheets: { edges: taggedFactSheets } }) => (taggedFactSheets.map(({ node }: { node: any }) => node)))
     const dataset: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> } = factSheets
@@ -279,6 +300,8 @@ const clickHandler = (event: any): void => {
 const updateData = async (): Promise<void> => {
   const dataset = await fetchDataset({
     factSheetType: unref(factSheetType),
+    tagGroupId: unref(selectedTagGroupId),
+    tagsByTagGroupIndex: unref(tagsByTagGroupIndex),
     filter: unref(filter)
   })
   chartData.value = computeChartData(dataset)
@@ -291,7 +314,7 @@ watch(factSheetType, (factSheetType, oldFactSheetType) => {
   lx.updateConfiguration(config)
 })
 
-watch([filter], debounce(updateData, 500))
+watch([selectedTagGroupId, filter], debounce(updateData, 500))
 
 watch(reportState, reportState => {
   if (!isequal(reportState, lx.latestPublishedState)) {
