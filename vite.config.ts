@@ -10,8 +10,8 @@ export default defineConfig({
   plugins: [
     vue(),
     leanix(),
-    eslintPlugin({ fix: true }),
-    graphql()
+    graphql(),
+    eslintPlugin({ fix: true })
   ],
   resolve: {
     alias: {

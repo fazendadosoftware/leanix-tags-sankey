@@ -13,7 +13,7 @@ interface Tag {
   name: string
   status: 'ACTIVE'
   color: string
-  tagGroup?: TagGroup
+  tagGroup: TagGroup | null
 }
 
 type TagGroupId = string
@@ -39,17 +39,16 @@ interface FactSheetNode {
   tags: Tag[]
 }
 
+interface Node {
+  
+}
 interface Dataset {
-  factSheetType: string
-  totalCount: number
-  missingCount: number
-  factSheetIndex: Record<string, FactSheetNode[]>
+  nodes: any
+  links: any
 }
 
 interface FetchDatasetParameters {
   factSheetType: string | null
-  tagGroupId: string | null
-  tagsByTagGroupIndex: TagGroupTagsIndex
   filter: Filter | null
 }
 

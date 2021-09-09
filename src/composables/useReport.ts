@@ -2,10 +2,9 @@ import { ref, unref, Ref, watch, computed, ComputedRef } from 'vue'
 import { scale } from 'chroma-js'
 import { print } from 'graphql/language/printer'
 import debounce from 'lodash.debounce'
-import cloneDeep from 'lodash.clonedeep'
 import isequal from 'lodash.isequal'
 import '@leanix/reporting'
-import { ChartSankeyConfig } from 'd2b/src/types'
+import { ChartSankeyConfig, ChartSankeyData, ChartSankeyNodeData, ChartSankeyLinkData } from 'd2b/src/types'
 
 // holder for the selected report factsheet type
 const factSheetType: Ref<string | null> = ref(null)
@@ -166,8 +165,8 @@ const getReportConfig = (fixedFactSheetType?: string): lxr.ReportConfiguration =
   }
 }
 
-const fetchDataset = async (params: FetchDatasetParameters): Promise<Dataset> => {
-  const { factSheetType, tagGroupId, filter: allFactSheetsFilter } = params
+const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankeyData> => {
+  const { factSheetType, filter: allFactSheetsFilter } = params
 
   if (factSheetType === null) throw Error('factsheetType is null')
   else if (allFactSheetsFilter === null) throw Error('filter is null')
@@ -178,66 +177,57 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<Dataset> =>
   const query = await import('@/graphql/FetchDatasetQuery.gql').then(query => print(query.default))
 
   try {
-    const taggedFactSheetsFilter = cloneDeep(allFactSheetsFilter)
+    const variables = JSON.stringify({ allFactSheetsFilter })
+    const factSheets = await lx.executeGraphQL(query, variables)
+      .then(({ taggedFactSheets: { edges: taggedFactSheets } }) => (taggedFactSheets.map(({ node }: { node: any }) => node)))
+    const dataset: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> } = factSheets
+      .reduce((accumulator: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> }, factSheet: FactSheetNode) => {
+        const { id, type, tags } = factSheet
+        const factSheetType = lx.translateFactSheetType(type, 'plural')
+        if (accumulator.nodes[factSheet.type] === undefined) accumulator.nodes[type] = { name: factSheetType, color: 'red', type: 'factSheetType' }
+        tags.forEach(tag => {
+          if (accumulator.nodes[tag.id] === undefined) accumulator.nodes[tag.id] = { name: tag.name, color: tag.color, type: 'tag' }
 
-    if (!Array.isArray(taggedFactSheetsFilter.facetFilters)) taggedFactSheetsFilter.facetFilters = []
+          const factSheetTaglinkId = `${factSheet.type}${tag.id}`
+          const source = factSheetType
+          const target = tag.name
+          if (accumulator.links[factSheetTaglinkId] === undefined) accumulator.links[factSheetTaglinkId] = { source, target, value: 0 }
+          accumulator.links[factSheetTaglinkId].value++
 
-    const variables = JSON.stringify({ allFactSheetsFilter, taggedFactSheetsFilter })
-    const { totalCount: totalFactSheetCount, taggedFactSheets }: { totalCount: number, taggedFactSheets: FactSheetNode[] } = await lx.executeGraphQL(query, variables)
-      .then(({ totalFactSheetCount: { totalCount }, taggedFactSheets: { edges: taggedFactSheets } }) => ({
-        totalCount,
-        taggedFactSheets: taggedFactSheets.map(({ node }: { node: any }) => node)
-      }))
-
-    const totalCount = totalFactSheetCount
-    const missingCount = totalFactSheetCount - taggedFactSheets.length
-    const factSheetIndex = taggedFactSheets
-      .reduce((accumulator: Record<TagId | '__multiple__', FactSheetNode[]>, factSheet) => {
-        const [tag = null, ...remainingTags] = factSheet.tags.filter(tag => tag?.tagGroup?.id === tagGroupId || (tagGroupId === '_TAGS_' && tag.tagGroup === null))
-        if (tag === null) return accumulator
-        if (tag.tagGroup?.id === tagGroupId && remainingTags.length > 0) accumulator.__multiple__.push(factSheet)
-        else {
-          if (accumulator[tag.id] === undefined) accumulator[tag.id] = []
-          accumulator[tag.id].push(factSheet)
-        }
+          if (tag.tagGroup !== null) {
+            if (accumulator.nodes[tag.tagGroup.id] === undefined) accumulator.nodes[tag.tagGroup.id] = { name: tag.tagGroup.name, color: tag.tagGroup.fill, type: 'tagGroup' }
+            const tagTagGroupLinkId = `${tag.id}${tag.tagGroup.id}`
+            const source = tag.name
+            const target = tag.tagGroup.name
+            if (accumulator.links[tagTagGroupLinkId] === undefined) accumulator.links[tagTagGroupLinkId] = { source, target, value: 0 }
+            accumulator.links[tagTagGroupLinkId].value++
+          }
+        })
         return accumulator
-      }, { __multiple__: [] })
-    return { factSheetType, totalCount, missingCount, factSheetIndex }
+      }, { nodes: {}, links: {} })
+    const nodes = Object.values(dataset.nodes)
+    const links = Object.values(dataset.links)
+    return { nodes, links }
   } finally {
     lx.hideSpinner()
   }
 }
 
-const computeChartData = (dataset: Dataset): ChartSankeyConfig | null => {
-  const { missingCount } = dataset
+const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null => {
   const _factSheetType = unref(factSheetType)
-  if (_factSheetType === null || missingCount === null) return null
-  const fsTypeViewModel: FactSheetTypeViewModel = getCurrentWorkspaceSetup().settings.viewModel.factSheets.find(({ type }: { type: string }) => type === _factSheetType)
-  const { bgColor: fill = '#000', color = '#fff' } = fsTypeViewModel
+  if (_factSheetType === null) return null
+  // const fsTypeViewModel: FactSheetTypeViewModel = getCurrentWorkspaceSetup().settings.viewModel.factSheets.find(({ type }: { type: string }) => type === _factSheetType)
 
   // https://docs.d2bjs.org/chartsAdvanced/sankey.html#typescript
   const chartData: ChartSankeyConfig = {
-    nodes: [
-      { name: lx.translateFactSheetType(_factSheetType, 'plural'), color: fill },
-      { name: 'Tag Group A' },
-      { name: 'Tag Group B' },
-      { name: 'Tag A' },
-      { name: 'Tag B' },
-      { name: 'Tag C' }
-    ],
-    links: [
-      { source: lx.translateFactSheetType(_factSheetType, 'plural'), target: 'Tag Group A', value: 4 },
-      { source: lx.translateFactSheetType(_factSheetType, 'plural'), target: 'Tag Group B', value: 2 },
-      { source: 'Tag Group A', target: 'Tag A', value: 2 },
-      { source: 'Tag Group A', target: 'Tag B', value: 2 },
-      { source: 'Tag Group B', target: 'Tag C', value: 2 }
-    ],
+    ...dataset,
     node: {
       draggableX: false,
       draggableY: false,
       padding: 100
     }
   }
+  console.log('CHART DATA', chartData)
   return chartData
 }
 
@@ -269,10 +259,8 @@ const clickHandler = (event: any): void => {
 const updateData = async (): Promise<void> => {
   const dataset = await fetchDataset({
     factSheetType: unref(factSheetType),
-    tagGroupId: unref(selectedTagGroupId),
     filter: unref(filter)
   })
-  totalCount.value = dataset.totalCount
   chartData.value = computeChartData(dataset)
 }
 
@@ -283,10 +271,10 @@ watch(factSheetType, (factSheetType, oldFactSheetType) => {
   lx.updateConfiguration(config)
 })
 
-watch([selectedTagGroupId, filter], debounce(updateData, 500))
+watch([filter], debounce(updateData, 500))
 
 watch(reportState, reportState => {
-  if (isequal(reportState, lx.latestPublishedState) === false) {
+  if (!isequal(reportState, lx.latestPublishedState)) {
     lx.publishState(reportState)
     console.debug('published state', reportState)
   }
