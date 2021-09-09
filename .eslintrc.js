@@ -1,26 +1,30 @@
-module.exports = {
+// @ts-check
+const { defineConfig } = require('eslint-define-config')
+
+module.exports = defineConfig({
+  root: true,
   env: {
     browser: true,
     es2021: true
   },
   extends: [
     'plugin:vue/essential',
-    'standard'
+    'standard-with-typescript'
   ],
   parserOptions: {
     ecmaVersion: 12,
     parser: '@typescript-eslint/parser',
-    sourceType: 'module'
+    sourceType: 'module',
+    project: ['./tsconfig.json'],
+    extraFileExtensions: ['.vue']
   },
   plugins: [
     'vue',
     '@typescript-eslint'
   ],
-  rules: {
-  },
   globals: {
     lx: true,
     defineProps: true,
     defineEmits: true
   }
-}
+})

@@ -81,4 +81,7 @@ onUnmounted(() => {
     height: 100%;
     width: 100%;
   }
+  .d2b-sankey-link, .d2b-sankey-node {
+    @apply cursor-pointer;
+  }
 </style>

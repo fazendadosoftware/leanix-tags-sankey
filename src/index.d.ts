@@ -1,8 +1,81 @@
 declare module 'd2b'
 
+interface Filter {
+  facetFilters?: lxr.FacetFilter[]
+  fullTextSearch?: string
+  ids?: string[]
+}
+
+type TagId = string
+
+interface Tag {
+  id: TagId
+  name: string
+  status: 'ACTIVE'
+  color: string
+  tagGroup?: TagGroup
+}
+
+type TagGroupId = string
+
+interface TagGroup {
+  id: TagGroupId
+  name: string
+  shortName: string | null
+  model: 'SINGLE' | 'MULTIPLE'
+  tags: Tag[]
+  /** fill color for tagGroup, added locally by this library */
+  fill?: string
+}
+
+type TagGroupTagsIndex = Record<TagGroupId, TagId[]>
+
+type FactSheetId = string
+
+interface FactSheetNode {
+  id: FactSheetId
+  name: string
+  type: string
+  tags: Tag[]
+}
+
+interface Dataset {
+  factSheetType: string
+  totalCount: number
+  missingCount: number
+  factSheetIndex: Record<string, FactSheetNode[]>
+}
+
+interface FetchDatasetParameters {
+  factSheetType: string | null
+  tagGroupId: string | null
+  tagsByTagGroupIndex: TagGroupTagsIndex
+  filter: Filter | null
+}
+
+interface FactSheetTypeViewModel {
+  bgColor: string
+  color: string
+}
+
+interface ReportCustomState {
+  factSheetType?: string | null
+  showLabels?: boolean
+}
+
+interface ReportSavedState {
+  customState?: ReportCustomState
+}
+
+interface ReportConfig extends ReportCustomState {
+  factSheetType: string
+  showUntaggedFactSheets?: boolean
+  filterBySubscriptionRole?: string | string[]
+  zoomable?: boolean
+}
+
 interface UseReport {
   initializeReport: () => Promise<void>
-  clickHandler: (event: any) => void
+  clickHandler: (chart: any) => void
   chartData: any
-  chartConfig: any
 }

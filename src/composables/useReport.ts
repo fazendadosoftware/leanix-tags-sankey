@@ -1,4 +1,33 @@
+import { ref, unref, Ref, watch, computed, ComputedRef } from 'vue'
+import { scale } from 'chroma-js'
+import { print } from 'graphql/language/printer'
+import debounce from 'lodash.debounce'
+import cloneDeep from 'lodash.clonedeep'
+import isequal from 'lodash.isequal'
 import '@leanix/reporting'
+import { ChartSankeyConfig } from 'd2b/src/types'
+
+// holder for the selected report factsheet type
+const factSheetType: Ref<string | null> = ref(null)
+// holder for valid tag groups for the given factsheet type
+const tagGroups: Ref<TagGroup[]> = ref([])
+// holder for lxr filter state
+const filter: Ref<Filter | null> = ref(null)
+// total count of filtered factsheets
+const totalCount: Ref<number | null> = ref(null)
+// holder for chart data
+const chartData: Ref<ChartSankeyConfig | null> = ref(null)
+
+// report settings
+const showLabels: Ref<boolean> = ref(true)
+const showUntaggedFactSheets: Ref<boolean> = ref(true)
+const zoomable: Ref<boolean> = ref(true)
+
+// computed report state, will triger a lx.update on every change through an watcher
+const reportState: ComputedRef<ReportCustomState> = computed(() => ({
+  factSheetType: unref(factSheetType),
+  showLabels: unref(showLabels)
+}))
 
 /**
  * Loads the Axiforma font files served by LeanIX host.
@@ -21,8 +50,207 @@ const loadAxiformaFonts = async (): Promise<void> => {
   }
 }
 
+// @ts-expect-error
+const getCurrentWorkspaceSetup = (): any => lx?.currentSetup
+
+/*
+* Throws an error if the specified factsheet type is not included in the workspace data model
+*/
+const validateFactSheetType = (factSheetType: string): void => {
+  const dataModelFactSheetTypes: string[] = Object.keys(getCurrentWorkspaceSetup().settings.dataModel.factSheets)
+  if (!dataModelFactSheetTypes.includes(factSheetType)) throw Error(`unrecognized factSheet type ${factSheetType}. Valid types are: ${dataModelFactSheetTypes.join(', ')}`)
+}
+
+/*
+* Get a list of valid factsheet types for the current workspace
+*/
+const getWorkspaceFactSheetTypes = (): lxr.FormModalSingleSelectFieldOption[] => {
+  const factSheets = Object.keys(getCurrentWorkspaceSetup().settings.dataModel.factSheets)
+    .map(factSheetType => ({ value: factSheetType, label: lx.translateFactSheetType(factSheetType, 'singular') }))
+    .sort(({ value: a }, { value: b }) => a > b ? 1 : a < b ? -1 : 0)
+  return factSheets
+}
+
+/*
+* Get a list of valid tag groups for a given factsheet type
+*/
+const getTagGroupsForFactSheetType = (factSheetType: string | null): TagGroup[] => {
+  if (factSheetType === null) return []
+  validateFactSheetType(factSheetType)
+  let tagGroups: TagGroup[] | undefined = getCurrentWorkspaceSetup().settings.tagModel[factSheetType]
+  if (tagGroups === undefined) throw Error(`could not find tagModel for factSheetType ${factSheetType}`)
+  /*
+  *   Note: tagGroups without any tags are filtered out here...
+  */
+  tagGroups = tagGroups
+    .filter(({ name, tags }) => {
+      if (tags.length === 0) console.warn(`Filtering out tag group ${name} as it contains no tags...`)
+      return tags.length > 0
+    })
+    .sort(({ name: a }, { name: b }) => a > b ? 1 : a < b ? -1 : 0)
+  const colorScale = scale(['#fafa6e', '#2A4858']).mode('lch').colors(tagGroups.length)
+
+  tagGroups = tagGroups.map((tagGroup, idx) => ({ ...tagGroup, fill: colorScale[idx] }))
+  return tagGroups
+}
+
 const getReportConfig = (fixedFactSheetType?: string): lxr.ReportConfiguration => {
-  return {}
+  if (fixedFactSheetType === undefined) fixedFactSheetType = unref(factSheetType) ?? ''
+  validateFactSheetType(fixedFactSheetType)
+  tagGroups.value = getTagGroupsForFactSheetType(fixedFactSheetType)
+
+  return {
+    allowTableView: false,
+    menuActions: {
+      showConfigure: true,
+      configureCallback: async () => {
+        const factSheetTypeField: lxr.FormModalSingleSelectField = { type: 'SingleSelect', label: 'FactSheet Type', options: getWorkspaceFactSheetTypes() }
+        const showLabelsField: lxr.FormModalCheckboxField = { type: 'Checkbox', label: 'Show labels' }
+        const fields = { factSheetType: factSheetTypeField, showLabels: showLabelsField }
+        const variables = { factSheetType, showLabels }
+        const values: lxr.FormModalValues = Object.entries(variables)
+          // @ts-expect-error
+          .reduce((accumulator, [key, value]) => ({ ...accumulator, [key]: unref(value) }), {})
+        const formResult = await lx.openFormModal(fields, values, undefined)
+        if (formResult !== false) {
+          Object.entries(formResult)
+            .forEach(([key, value]: [key: string, value: lxr.FormModalValue]) => {
+              // @ts-expect-error
+              if (values[key] !== value) variables[key].value = value
+            })
+        }
+      }
+    },
+    /*
+    ui: {
+      elements: {
+        root: {
+          items: [
+            {
+              id: 'tagGroupId',
+              type: 'groupDropdown',
+              label: 'Tag Group',
+              sections: [
+                {
+                  id: 'filters',
+                  label: '',
+                  entries: tagGroupEntries
+                }
+              ]
+            }
+          ],
+          style: { justifyContent: 'start' }
+        },
+        values: {
+          tagGroupId: defaultSelectedTagGroupId,
+          factSheetType: unref(factSheetType)
+        }
+      },
+      async update (selection: lxr.UISelection): Promise<undefined> {
+        const tagGroupId = selection.elements?.values.tagGroupId
+        if (typeof tagGroupId === 'string') {
+          selectedTagGroupId.value = tagGroupId === '__noSelection__' ? null : tagGroupId
+          // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+        } else throw Error(`selectedTagGroupId should be a string, got ${tagGroupId}: ${typeof tagGroupId}`)
+        return undefined
+      }
+    },
+    */
+    facets: [{
+      key: fixedFactSheetType,
+      fixedFactSheetType,
+      facetFiltersChangedCallback: ({ facets: facetFilters, fullTextSearchTerm: fullTextSearch, directHits }) => {
+        filter.value = { facetFilters, fullTextSearch, ids: directHits.map(({ id }) => id) }
+      }
+    }]
+  }
+}
+
+const fetchDataset = async (params: FetchDatasetParameters): Promise<Dataset> => {
+  const { factSheetType, tagGroupId, filter: allFactSheetsFilter } = params
+
+  if (factSheetType === null) throw Error('factsheetType is null')
+  else if (allFactSheetsFilter === null) throw Error('filter is null')
+
+  lx.showSpinner()
+
+  // @ts-expect-error
+  const query = await import('@/graphql/FetchDatasetQuery.gql').then(query => print(query.default))
+
+  try {
+    const taggedFactSheetsFilter = cloneDeep(allFactSheetsFilter)
+
+    if (!Array.isArray(taggedFactSheetsFilter.facetFilters)) taggedFactSheetsFilter.facetFilters = []
+
+    const variables = JSON.stringify({ allFactSheetsFilter, taggedFactSheetsFilter })
+    const { totalCount: totalFactSheetCount, taggedFactSheets }: { totalCount: number, taggedFactSheets: FactSheetNode[] } = await lx.executeGraphQL(query, variables)
+      .then(({ totalFactSheetCount: { totalCount }, taggedFactSheets: { edges: taggedFactSheets } }) => ({
+        totalCount,
+        taggedFactSheets: taggedFactSheets.map(({ node }: { node: any }) => node)
+      }))
+
+    const totalCount = totalFactSheetCount
+    const missingCount = totalFactSheetCount - taggedFactSheets.length
+    const factSheetIndex = taggedFactSheets
+      .reduce((accumulator: Record<TagId | '__multiple__', FactSheetNode[]>, factSheet) => {
+        const [tag = null, ...remainingTags] = factSheet.tags.filter(tag => tag?.tagGroup?.id === tagGroupId || (tagGroupId === '_TAGS_' && tag.tagGroup === null))
+        if (tag === null) return accumulator
+        if (tag.tagGroup?.id === tagGroupId && remainingTags.length > 0) accumulator.__multiple__.push(factSheet)
+        else {
+          if (accumulator[tag.id] === undefined) accumulator[tag.id] = []
+          accumulator[tag.id].push(factSheet)
+        }
+        return accumulator
+      }, { __multiple__: [] })
+    return { factSheetType, totalCount, missingCount, factSheetIndex }
+  } finally {
+    lx.hideSpinner()
+  }
+}
+
+const computeChartData = (dataset: Dataset): ChartSankeyConfig | null => {
+  const { missingCount } = dataset
+  const _factSheetType = unref(factSheetType)
+  if (_factSheetType === null || missingCount === null) return null
+  const fsTypeViewModel: FactSheetTypeViewModel = getCurrentWorkspaceSetup().settings.viewModel.factSheets.find(({ type }: { type: string }) => type === _factSheetType)
+  const { bgColor: fill = '#000', color = '#fff' } = fsTypeViewModel
+
+  // https://docs.d2bjs.org/chartsAdvanced/sankey.html#typescript
+  const chartData: ChartSankeyConfig = {
+    nodes: [
+      { name: lx.translateFactSheetType(_factSheetType, 'plural'), color: fill },
+      { name: 'Tag Group A' },
+      { name: 'Tag Group B' },
+      { name: 'Tag A' },
+      { name: 'Tag B' },
+      { name: 'Tag C' }
+    ],
+    links: [
+      { source: lx.translateFactSheetType(_factSheetType, 'plural'), target: 'Tag Group A', value: 4 },
+      { source: lx.translateFactSheetType(_factSheetType, 'plural'), target: 'Tag Group B', value: 2 },
+      { source: 'Tag Group A', target: 'Tag A', value: 2 },
+      { source: 'Tag Group A', target: 'Tag B', value: 2 },
+      { source: 'Tag Group B', target: 'Tag C', value: 2 }
+    ],
+    node: {
+      draggableX: false,
+      draggableY: false,
+      padding: 100
+    }
+  }
+  return chartData
+}
+
+const setReportConfig = (): void => {
+  console.debug('workspace setup', getCurrentWorkspaceSetup())
+  const [{ value: defaultFactSheetType }] = getWorkspaceFactSheetTypes()
+  const { config, savedState }: { config: ReportConfig, savedState: ReportSavedState | null } = getCurrentWorkspaceSetup()
+  factSheetType.value = savedState?.customState?.factSheetType ??
+    ((config.factSheetType === 'Default' || config.factSheetType === null) ? defaultFactSheetType : config.factSheetType) ??
+    defaultFactSheetType
+  showUntaggedFactSheets.value = config.showUntaggedFactSheets ?? unref(showUntaggedFactSheets)
+  showLabels.value = savedState?.customState?.showLabels ?? config.showLabels ?? unref(showLabels.value)
+  zoomable.value = config.zoomable ?? unref(zoomable)
 }
 
 /**
@@ -30,47 +258,42 @@ const getReportConfig = (fixedFactSheetType?: string): lxr.ReportConfiguration =
  */
 const initializeReport = async (): Promise<void> => {
   await lx.init()
-  // setReportConfig()
+  setReportConfig()
   await Promise.all([lx.ready(getReportConfig()), loadAxiformaFonts()])
 }
 
-const clickHandler = (event: any) => {
+const clickHandler = (event: any): void => {
   console.log('CLICKED', event)
 }
 
-const chartData = {
-  nodes: [
-    { name: 'Node A' },
-    { name: 'Node B' },
-    { name: 'Node C' },
-    { name: 'Node D' },
-    { name: 'Node E' }
-  ],
-  links: [
-    { source: 'Node A', target: 'Node E', value: 2 },
-    { source: 'Node A', target: 'Node C', value: 2 },
-    { source: 'Node B', target: 'Node C', value: 2 },
-    { source: 'Node B', target: 'Node D', value: 2 },
-    { source: 'Node C', target: 'Node D', value: 2 },
-    { source: 'Node C', target: 'Node E', value: 2 },
-    { source: 'Node D', target: 'Node E', value: 4 }
-  ]
+const updateData = async (): Promise<void> => {
+  const dataset = await fetchDataset({
+    factSheetType: unref(factSheetType),
+    tagGroupId: unref(selectedTagGroupId),
+    filter: unref(filter)
+  })
+  totalCount.value = dataset.totalCount
+  chartData.value = computeChartData(dataset)
 }
 
-const chartConfig = (chart: any) => {
-  chart
-    .sankey()
-    .sankey()
-    .nodePadding(100)
+watch(factSheetType, (factSheetType, oldFactSheetType) => {
+  if (factSheetType === null || oldFactSheetType === null) return
+  const config = getReportConfig(factSheetType)
+  // after configuration is updated, a filter callback will happen, which will trigger the updateData method
+  lx.updateConfiguration(config)
+})
 
-  chart
-    .sankey()
-    .nodeDraggableY(false)
-}
+watch([selectedTagGroupId, filter], debounce(updateData, 500))
+
+watch(reportState, reportState => {
+  if (isequal(reportState, lx.latestPublishedState) === false) {
+    lx.publishState(reportState)
+    console.debug('published state', reportState)
+  }
+})
 
 export default (): UseReport => ({
   initializeReport,
   clickHandler,
-  chartData,
-  chartConfig
+  chartData
 })
