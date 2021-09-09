@@ -21,14 +21,12 @@ const filter: Ref<Filter | null> = ref(null)
 const chartData: Ref<ChartSankeyConfig | null> = ref(null)
 
 // report settings
-const showLabels: Ref<boolean> = ref(true)
-const showUntaggedFactSheets: Ref<boolean> = ref(true)
-const zoomable: Ref<boolean> = ref(true)
+const showUntaggedFactSheets: Ref<boolean> = ref(false)
 
 // computed report state, will triger a lx.update on every change through an watcher
 const reportState: ComputedRef<ReportCustomState> = computed(() => ({
   factSheetType: unref(factSheetType),
-  showLabels: unref(showLabels),
+  showUntaggedFactSheets: unref(showUntaggedFactSheets),
   selectedTagGroupId: unref(selectedTagGroupId)
 }))
 
@@ -119,9 +117,9 @@ const getReportConfig = (fixedFactSheetType?: string): lxr.ReportConfiguration =
       showConfigure: true,
       configureCallback: async () => {
         const factSheetTypeField: lxr.FormModalSingleSelectField = { type: 'SingleSelect', label: 'FactSheet Type', options: getWorkspaceFactSheetTypes() }
-        const showLabelsField: lxr.FormModalCheckboxField = { type: 'Checkbox', label: 'Show labels' }
-        const fields = { factSheetType: factSheetTypeField, showLabels: showLabelsField }
-        const variables = { factSheetType, showLabels }
+        const showUntaggedFactSheetsField: lxr.FormModalCheckboxField = { type: 'Checkbox', label: 'Show Untagged FactSheets' }
+        const fields = { factSheetType: factSheetTypeField, showUntaggedFactSheets: showUntaggedFactSheetsField }
+        const variables = { factSheetType, showUntaggedFactSheets }
         const values: lxr.FormModalValues = Object.entries(variables)
           // @ts-expect-error
           .reduce((accumulator, [key, value]) => ({ ...accumulator, [key]: unref(value) }), {})
@@ -185,6 +183,9 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
   else if (tagGroupId === null) throw Error('selectedTagGroupId is null')
   else if (allFactSheetsFilter === null) throw Error('filter is null')
 
+  const tagGroupIndex: Record<string, TagGroup> = getTagGroupsForFactSheetType(factSheetType)
+    .reduce((accumulator, tagGroup) => ({ ...accumulator, [tagGroup.id]: tagGroup }), {})
+
   lx.showSpinner()
 
   const requiredTags = tagsByTagGroupIndex[tagGroupId]
@@ -210,56 +211,56 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
 
     // eslint-disable-next-line
     const totalCount = totalFactSheetCount
-    // eslint-disable-next-line
     const missingCount = totalFactSheetCount - taggedFactSheets.length
 
-    const dataset: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> } = taggedFactSheets
-      .reduce((accumulator: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> }, factSheet: FactSheetNode) => {
-        const { type, tags } = factSheet
-        const factSheetType = lx.translateFactSheetType(type, 'plural')
-        if (accumulator.nodes[factSheet.type] === undefined) accumulator.nodes[type] = { name: factSheetType, color: 'red', type: 'factSheetType' }
-        tags.forEach(tag => {
-          if (accumulator.nodes[tag.id] === undefined) {
-            accumulator.nodes[tag.id] = {
-              name: tag.name,
-              color: tag.color,
-              type: 'tag'
-            }
-          }
+    const factSheetName = lx.translateFactSheetType(factSheetType, 'plural')
 
-          if (tag.tagGroup !== null) {
-            if (accumulator.nodes[tag.tagGroup.id] === undefined) {
-              accumulator.nodes[tag.tagGroup.id] = {
-                name: tag.tagGroup.name,
-                color: tag.tagGroup.fill,
-                type: 'tagGroup'
-              }
-            }
-            const factSheetTagGrouplinkId = `${factSheet.type}${tag.tagGroup.id}`
-            if (accumulator.links[factSheetTagGrouplinkId] === undefined) {
-              accumulator.links[factSheetTagGrouplinkId] = {
-                source: factSheetType,
-                target: tag.tagGroup.name,
-                value: 0
-              }
-            }
-            accumulator.links[factSheetTagGrouplinkId].value++
+    const tagGroup = tagGroupIndex[tagGroupId]
+    const fsTypeViewModel: FactSheetTypeViewModel = getCurrentWorkspaceSetup().settings.viewModel.factSheets.find(({ type }: { type: string }) => type === factSheetType)
+    const nodes: ChartSankeyNodeData[] = [
+      { name: factSheetName, color: fsTypeViewModel.bgColor, type: 'factSheetType' },
+      { name: tagGroup.name, color: tagGroup.fill, type: 'tagGroup' },
+      ...tagGroup.tags.map(({ name, color }) => ({ name, color, type: 'tag' }))
+    ]
+    const multipleTaggedName = 'Multiple Tagged'
+    if (tagGroup.mode === 'MULTIPLE') nodes.push({ name: multipleTaggedName, color: 'black', type: 'multiple' })
 
-            const tagGroupTagLinkId = `${tag.tagGroup.id}${tag.id}`
-            if (accumulator.links[tagGroupTagLinkId] === undefined) accumulator.links[tagGroupTagLinkId] = { source: tag.tagGroup.name, target: tag.name, value: 0 }
-            accumulator.links[tagGroupTagLinkId].value++
-          } else {
-            const factSheetTaglinkId = `${factSheet.type}${tag.id}`
-            const source = factSheetType
-            const target = tag.name
-            if (accumulator.links[factSheetTaglinkId] === undefined) accumulator.links[factSheetTaglinkId] = { source, target, value: 0 }
-            accumulator.links[factSheetTaglinkId].value++
-          }
-        })
+    const accumulator: Record<string, ChartSankeyLinkData> = {}
+    if (unref(showUntaggedFactSheets) && missingCount > 0) {
+      const untaggedName = 'Untagged'
+      nodes.push({ name: untaggedName, color: 'black', type: '_UNTAGGED_' })
+      accumulator[`${factSheetType}_MISSING_`] = { source: factSheetName, target: untaggedName, value: missingCount }
+    }
+    const linkIndex: Record<string, ChartSankeyLinkData> = taggedFactSheets
+      .reduce((accumulator, factSheet: FactSheetNode) => {
+        const scopedTags = factSheet.tags.filter(tag => (tag?.tagGroup?.id === tagGroupId) || (tagGroupId === '_TAGS_' && tag.tagGroup === null))
+        if (scopedTags.length === 0) return accumulator
+        else if (scopedTags.length === 1) {
+          const linkId = `${factSheetType}${tagGroup.id}`
+          if (accumulator[linkId] === undefined) accumulator[linkId] = { source: factSheetName, target: tagGroup.name, value: 0 }
+          accumulator[`${factSheetType}${tagGroup.id}`].value++
+          const [tag] = scopedTags
+          const tagLinkId = `${tagGroupId}${tag.id}`
+          if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: tagGroup.name, target: tag.name, value: 0 }
+          accumulator[tagLinkId].value++
+        } else if (scopedTags.length > 1) {
+          const multipleTaggedLinkId = `${factSheetType}_MULTIPLE_`
+          if (accumulator[multipleTaggedLinkId] === undefined) accumulator[multipleTaggedLinkId] = { source: factSheetName, target: multipleTaggedName, value: 0 }
+          accumulator[multipleTaggedLinkId].value++
+          const tagGroupLinkId = `_MULTIPLE_${tagGroupId}`
+          if (accumulator[tagGroupLinkId] === undefined) accumulator[tagGroupLinkId] = { source: multipleTaggedName, target: tagGroup.name, value: 0 }
+          scopedTags.forEach(tag => {
+            accumulator[tagGroupLinkId].value++
+            const tagLinkId = `${tagGroupId}${tag.id}`
+            if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: tagGroup.name, target: tag.name, value: 0 }
+            accumulator[tagLinkId].value++
+          })
+        }
         return accumulator
-      }, { nodes: {}, links: {} })
-    const nodes = Object.values(dataset.nodes)
-    const links = Object.values(dataset.links)
+      }, accumulator)
+
+    const links = Object.values(linkIndex)
+
     return { nodes, links }
   } finally {
     lx.hideSpinner()
@@ -269,14 +270,16 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
 const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null => {
   const _factSheetType = unref(factSheetType)
   if (_factSheetType === null) return null
+  else if (dataset.nodes.length === 0 || dataset.links.length === 0) return null
 
   // https://docs.d2bjs.org/chartsAdvanced/sankey.html#typescript
   const chartData: ChartSankeyConfig = {
     ...dataset,
+    iterations: 10,
     node: {
       draggableX: false,
       draggableY: false,
-      padding: 5
+      padding: 50
     },
     link: {
       sourceColor: (data, sourceColor) => sourceColor,
@@ -294,8 +297,6 @@ const setReportConfig = (): void => {
     ((config.factSheetType === 'Default' || config.factSheetType === null) ? defaultFactSheetType : config.factSheetType) ??
     defaultFactSheetType
   showUntaggedFactSheets.value = config.showUntaggedFactSheets ?? unref(showUntaggedFactSheets)
-  showLabels.value = savedState?.customState?.showLabels ?? config.showLabels ?? unref(showLabels.value)
-  zoomable.value = config.zoomable ?? unref(zoomable)
 }
 
 /**
@@ -328,7 +329,7 @@ watch(factSheetType, (factSheetType, oldFactSheetType) => {
   lx.updateConfiguration(config)
 })
 
-watch([selectedTagGroupId, filter], debounce(updateData, 500))
+watch([selectedTagGroupId, showUntaggedFactSheets, filter], debounce(updateData, 500))
 
 watch(reportState, reportState => {
   if (!isequal(reportState, lx.latestPublishedState)) {

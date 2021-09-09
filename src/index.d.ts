@@ -22,7 +22,7 @@ interface TagGroup {
   id: TagGroupId
   name: string
   shortName: string | null
-  model: 'SINGLE' | 'MULTIPLE'
+  mode: 'SINGLE' | 'MULTIPLE'
   tags: Tag[]
   /** fill color for tagGroup, added locally by this library */
   fill?: string
@@ -61,7 +61,7 @@ interface FactSheetTypeViewModel {
 
 interface ReportCustomState {
   factSheetType?: string | null
-  showLabels?: boolean
+  showUntaggedFactSheets?: boolean
   selectedTagGroupId?: TagGroupId | null
 }
 

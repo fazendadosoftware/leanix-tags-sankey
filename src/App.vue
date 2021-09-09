@@ -5,6 +5,7 @@
       :advanced="true"
       :data="chartData"
       @click="clickHandler"/>
+    <div v-else class="h-full flex items-center justify-center text-2xl font-bold text-gray-800">No tagged factsheets for this tag group...</div>
   </div>
 </template>
 
