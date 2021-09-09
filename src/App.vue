@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen p-4">
+  <div class="h-screen">
     <sankey-chart
       v-if="chartData !== null"
       :advanced="true"

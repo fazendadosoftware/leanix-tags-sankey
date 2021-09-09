@@ -12,8 +12,6 @@ const factSheetType: Ref<string | null> = ref(null)
 const tagGroups: Ref<TagGroup[]> = ref([])
 // holder for lxr filter state
 const filter: Ref<Filter | null> = ref(null)
-// total count of filtered factsheets
-const totalCount: Ref<number | null> = ref(null)
 // holder for chart data
 const chartData: Ref<ChartSankeyConfig | null> = ref(null)
 
@@ -182,25 +180,45 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
       .then(({ taggedFactSheets: { edges: taggedFactSheets } }) => (taggedFactSheets.map(({ node }: { node: any }) => node)))
     const dataset: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> } = factSheets
       .reduce((accumulator: { nodes: Record<string, ChartSankeyNodeData>, links: Record<string, ChartSankeyLinkData> }, factSheet: FactSheetNode) => {
-        const { id, type, tags } = factSheet
+        const { type, tags } = factSheet
         const factSheetType = lx.translateFactSheetType(type, 'plural')
         if (accumulator.nodes[factSheet.type] === undefined) accumulator.nodes[type] = { name: factSheetType, color: 'red', type: 'factSheetType' }
         tags.forEach(tag => {
-          if (accumulator.nodes[tag.id] === undefined) accumulator.nodes[tag.id] = { name: tag.name, color: tag.color, type: 'tag' }
-
-          const factSheetTaglinkId = `${factSheet.type}${tag.id}`
-          const source = factSheetType
-          const target = tag.name
-          if (accumulator.links[factSheetTaglinkId] === undefined) accumulator.links[factSheetTaglinkId] = { source, target, value: 0 }
-          accumulator.links[factSheetTaglinkId].value++
+          if (accumulator.nodes[tag.id] === undefined) {
+            accumulator.nodes[tag.id] = {
+              name: tag.name,
+              color: tag.color,
+              type: 'tag'
+            }
+          }
 
           if (tag.tagGroup !== null) {
-            if (accumulator.nodes[tag.tagGroup.id] === undefined) accumulator.nodes[tag.tagGroup.id] = { name: tag.tagGroup.name, color: tag.tagGroup.fill, type: 'tagGroup' }
-            const tagTagGroupLinkId = `${tag.id}${tag.tagGroup.id}`
-            const source = tag.name
-            const target = tag.tagGroup.name
-            if (accumulator.links[tagTagGroupLinkId] === undefined) accumulator.links[tagTagGroupLinkId] = { source, target, value: 0 }
-            accumulator.links[tagTagGroupLinkId].value++
+            if (accumulator.nodes[tag.tagGroup.id] === undefined) {
+              accumulator.nodes[tag.tagGroup.id] = {
+                name: tag.tagGroup.name,
+                color: tag.tagGroup.fill,
+                type: 'tagGroup'
+              }
+            }
+            const factSheetTagGrouplinkId = `${factSheet.type}${tag.tagGroup.id}`
+            if (accumulator.links[factSheetTagGrouplinkId] === undefined) {
+              accumulator.links[factSheetTagGrouplinkId] = {
+                source: factSheetType,
+                target: tag.tagGroup.name,
+                value: 0
+              }
+            }
+            accumulator.links[factSheetTagGrouplinkId].value++
+
+            const tagGroupTagLinkId = `${tag.tagGroup.id}${tag.id}`
+            if (accumulator.links[tagGroupTagLinkId] === undefined) accumulator.links[tagGroupTagLinkId] = { source: tag.tagGroup.name, target: tag.name, value: 0 }
+            accumulator.links[tagGroupTagLinkId].value++
+          } else {
+            const factSheetTaglinkId = `${factSheet.type}${tag.id}`
+            const source = factSheetType
+            const target = tag.name
+            if (accumulator.links[factSheetTaglinkId] === undefined) accumulator.links[factSheetTaglinkId] = { source, target, value: 0 }
+            accumulator.links[factSheetTaglinkId].value++
           }
         })
         return accumulator
@@ -216,7 +234,6 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
 const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null => {
   const _factSheetType = unref(factSheetType)
   if (_factSheetType === null) return null
-  // const fsTypeViewModel: FactSheetTypeViewModel = getCurrentWorkspaceSetup().settings.viewModel.factSheets.find(({ type }: { type: string }) => type === _factSheetType)
 
   // https://docs.d2bjs.org/chartsAdvanced/sankey.html#typescript
   const chartData: ChartSankeyConfig = {
@@ -224,10 +241,13 @@ const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null =>
     node: {
       draggableX: false,
       draggableY: false,
-      padding: 100
+      padding: 5
+    },
+    link: {
+      sourceColor: (data, sourceColor) => sourceColor,
+      targetColor: (data, targetColor) => targetColor
     }
   }
-  console.log('CHART DATA', chartData)
   return chartData
 }
 

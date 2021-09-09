@@ -82,6 +82,6 @@ onUnmounted(() => {
     width: 100%;
   }
   .d2b-sankey-link, .d2b-sankey-node {
-    @apply cursor-pointer;
+    @apply cursor-pointer text-sm tracking-tight;
   }
 </style>
