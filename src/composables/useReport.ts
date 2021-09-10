@@ -336,9 +336,12 @@ interface ChartNodeEvent extends ChartEvent {
 
 const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
   if ((e as ChartNodeEvent).label !== undefined) {
-    console.log('NODE EVENT', e)
+    // @ts-expect-error
+    const { id, name, type }: { id: string, name: string, type: string } = (e as ChartNodeEvent).data
+    console.log(`NODE: ${type} ${id} ${name}`)
   } else {
-    console.log('LINK EVNET', e)
+    const { source, target, value } = (e as ChartLinkEvent).data
+    console.log(`Link: ${source} -> ${target} : ${value}`)
   }
   const sidePaneElements: lxr.SidePaneElements = {
     teste: {
