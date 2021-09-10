@@ -309,6 +309,20 @@ const initializeReport = async (): Promise<void> => {
 }
 
 const clickHandler = (event: any): void => {
+  const sidePaneElements: lxr.SidePaneElements = {
+    teste: {
+      type: 'ShowInventory',
+      factSheetType: 'Application',
+      label: 'selected factsheets',
+      facetFilters: [],
+      factSheetIds: [],
+      tableColumns: []
+    }
+  }
+  const update: (factSheetUpdate: lxr.FactSheetUpdate) => void = factSheetUpdate => {
+    console.log('UPDATED', factSheetUpdate)
+  }
+  lx.openSidePane(sidePaneElements, update)
   console.log('CLICKED', event)
 }
 

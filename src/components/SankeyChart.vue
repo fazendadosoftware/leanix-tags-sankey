@@ -1,5 +1,5 @@
 <template>
-  <div :class="['vue-d2b-container', `vue-d2b-${name}`]" ref="root"/>
+  <div :class="['vue-d2b-container', `vue-d2b-chart-sunkey`]" ref="root"/>
 </template>
 
 <script lang="ts" setup>
@@ -22,7 +22,6 @@ const { data, config, duration, id, advanced } = toRefs(props)
 const root: Ref<HTMLCanvasElement | null> = ref(null)
 const emit = defineEmits(['beforeRender', 'rendered', 'mouseover', 'mouseleave', 'click'])
 
-const name = 'chart-sunkey'
 const generator = chartSankey()
 
 let unwatch = () => {}
