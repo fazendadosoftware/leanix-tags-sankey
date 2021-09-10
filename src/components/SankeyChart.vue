@@ -3,7 +3,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, unref, Ref, toRefs, PropType, watch, onMounted, onUnmounted } from 'vue'
+import { ref, unref, Ref, toRefs, PropType, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { id as generateId, chartSankey } from 'd2b'
 import { ChartSankeyData } from 'd2b/src/types'
 import { select, selectAll } from 'd3-selection'
@@ -34,16 +34,18 @@ const update = (options?: { skipTransition: boolean }) => {
   const _root = select(unref(root))
   if (_root === null) return
 
-  // add event retransmitters to links and nodes
-  selectAll('.d2b-sankey-link')
-    .on('mouseover', (event, link) => emit('mouseover', { event, link }))
-    .on('mouseleave', (event, link) => emit('mouseleave', { event, link }))
-    .on('click', (event, link) => emit('click', { event, link }))
+  // add event retransmitters to links and nodes after chart is rendered
+  nextTick(() => {
+    selectAll('.d2b-sankey-link')
+      .on('mouseover', (event, link) => emit('mouseover', { event, link }))
+      .on('mouseleave', (event, link) => emit('mouseleave', { event, link }))
+      .on('click', (event, link) => emit('click', { event, link }))
 
-  selectAll('.d2b-sankey-node')
-    .on('mouseover', (event, node) => emit('mouseover', { event, node }))
-    .on('mouseleave', (event, node) => emit('mouseleave', { event, node }))
-    .on('click', (event, node) => emit('click', { event, node }))
+    selectAll('.d2b-sankey-node')
+      .on('mouseover', (event, node) => emit('mouseover', { event, node }))
+      .on('mouseleave', (event, node) => emit('mouseleave', { event, node }))
+      .on('click', (event, node) => emit('click', { event, node }))
+  })
 
   const _configCallback = unref(config)
   const _data = unref(data)

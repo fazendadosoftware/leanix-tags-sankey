@@ -275,15 +275,15 @@ const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null =>
   // https://docs.d2bjs.org/chartsAdvanced/sankey.html#typescript
   const chartData: ChartSankeyConfig = {
     ...dataset,
-    iterations: 10,
+    // iterations: 10,
     node: {
       draggableX: false,
       draggableY: false,
       padding: 50
     },
     link: {
-      sourceColor: (data, sourceColor) => sourceColor,
-      targetColor: (data, targetColor) => targetColor
+      // sourceColor: (data, sourceColor) => sourceColor,
+      // targetColor: (data, targetColor) => targetColor
     }
   }
   return chartData
