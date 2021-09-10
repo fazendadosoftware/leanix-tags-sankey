@@ -1,5 +1,5 @@
-// /// <reference types="vite/client" />
-import 'vite/client'
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
+/// <reference types="vite/client" />
 
 declare module '*.vue' {
   import { DefineComponent } from 'vue'
@@ -12,3 +12,5 @@ declare module '*.gql' {
   const value: any
   export default value
 }
+
+declare module 'd2b'

@@ -1,5 +1,3 @@
-declare module 'd2b'
-
 interface Filter {
   facetFilters?: lxr.FacetFilter[]
   fullTextSearch?: string
@@ -39,9 +37,6 @@ interface FactSheetNode {
   tags: Tag[]
 }
 
-interface Node {
-  
-}
 interface Dataset {
   nodes: any
   links: any
@@ -78,6 +73,6 @@ interface ReportConfig extends ReportCustomState {
 
 interface UseReport {
   initializeReport: () => Promise<void>
-  clickHandler: (chart: any) => void
+  clickHandler: (event: any, d: unknown) => void
   chartData: any
 }

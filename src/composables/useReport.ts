@@ -192,7 +192,6 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
   const facetFilters = [{ facetKey: 'FactSheetTypes', keys: [factSheetType] }]
   facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
 
-  // @ts-expect-error
   const query = await import('@/graphql/FetchDatasetQuery.gql').then(query => print(query.default))
 
   try {
@@ -219,8 +218,8 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
     const fsTypeViewModel: FactSheetTypeViewModel = getCurrentWorkspaceSetup().settings.viewModel.factSheets.find(({ type }: { type: string }) => type === factSheetType)
     const nodes: ChartSankeyNodeData[] = [
       { name: factSheetName, color: fsTypeViewModel.bgColor, type: 'factSheetType' },
-      { name: tagGroup.name, color: tagGroup.fill, type: 'tagGroup' },
-      ...tagGroup.tags.map(({ name, color }) => ({ name, color, type: 'tag' }))
+      { name: tagGroup.name, color: tagGroup.fill, type: 'tagGroup', id: tagGroup.id },
+      ...tagGroup.tags.map(({ id, name, color }) => ({ name, color, type: 'tag', id }))
     ]
     const multipleTaggedName = 'Multiple Tagged'
     if (tagGroup.mode === 'MULTIPLE') nodes.push({ name: multipleTaggedName, color: 'black', type: 'multiple' })
@@ -308,7 +307,39 @@ const initializeReport = async (): Promise<void> => {
   await Promise.all([lx.ready(getReportConfig()), loadAxiformaFonts()])
 }
 
-const clickHandler = (event: any): void => {
+interface ChartEvent {
+  key: string
+  event: {
+    type: 'click' | 'mouseover' | 'mouseleave'
+  }
+}
+
+interface ChartLinkEvent extends ChartEvent {
+  keyTrim: string
+  source: ChartSankeyNodeData
+  sourceColor: string
+  sourceKey: string
+  target: ChartSankeyNodeData
+  targetColor: string
+  targetKey: string
+  value: number
+  data: ChartSankeyLinkData
+}
+
+interface ChartNodeEvent extends ChartEvent {
+  label: string
+  color: string
+  data: ChartSankeyNodeData
+  sourceLinks: ChartSankeyLinkData[]
+  targetLinks: ChartSankeyLinkData[]
+}
+
+const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
+  if ((e as ChartNodeEvent).label !== undefined) {
+    console.log('NODE EVENT', e)
+  } else {
+    console.log('LINK EVNET', e)
+  }
   const sidePaneElements: lxr.SidePaneElements = {
     teste: {
       type: 'ShowInventory',
@@ -323,7 +354,6 @@ const clickHandler = (event: any): void => {
     console.log('UPDATED', factSheetUpdate)
   }
   lx.openSidePane(sidePaneElements, update)
-  console.log('CLICKED', event)
 }
 
 const updateData = async (): Promise<void> => {

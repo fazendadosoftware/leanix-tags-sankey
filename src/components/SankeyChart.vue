@@ -33,17 +33,18 @@ const update = (options?: { skipTransition: boolean }) => {
   const _root = select(unref(root))
   if (_root === null) return
 
-  // add event retransmitters to links and nodes after chart is rendered
+  // @ts-ignore
+  const eventDataMapper = (event: any, d: unknown): void => emit(event.type, { ...d, event })
+
   nextTick(() => {
     selectAll('.d2b-sankey-link')
-      .on('mouseover', (event, link) => emit('mouseover', { event, link }))
-      .on('mouseleave', (event, link) => emit('mouseleave', { event, link }))
-      .on('click', (event, link) => emit('click', { event, link }))
-
+      .on('mouseover', eventDataMapper)
+      .on('mouseleave', eventDataMapper)
+      .on('click', eventDataMapper)
     selectAll('.d2b-sankey-node')
-      .on('mouseover', (event, node) => emit('mouseover', { event, node }))
-      .on('mouseleave', (event, node) => emit('mouseleave', { event, node }))
-      .on('click', (event, node) => emit('click', { event, node }))
+      .on('mouseover', eventDataMapper)
+      .on('mouseleave', eventDataMapper)
+      .on('click', eventDataMapper)
   })
 
   const _configCallback = unref(config)
