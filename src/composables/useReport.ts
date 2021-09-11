@@ -88,10 +88,11 @@ const getTagGroupsForFactSheetType = (factSheetType: string | null): TagGroup[] 
       if (tags.length === 0) console.warn(`Filtering out tag group ${name} as it contains no tags...`)
       return tags.length > 0
     })
-    .sort(({ name: a }, { name: b }) => a > b ? 1 : a < b ? -1 : 0)
   const colorScale = scale(['#fafa6e', '#2A4858']).mode('lch').colors(tagGroups.length)
 
-  tagGroups = tagGroups.map((tagGroup, idx) => ({ ...tagGroup, fill: colorScale[idx] }))
+  tagGroups = tagGroups
+    .map((tagGroup, idx) => ({ ...tagGroup, fill: colorScale[idx] }))
+    .sort(({ name: a }, { name: b }) => a > b ? 1 : a < b ? -1 : 0)
   return tagGroups
 }
 
