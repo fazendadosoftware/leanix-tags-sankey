@@ -335,22 +335,36 @@ interface ChartNodeEvent extends ChartEvent {
 }
 
 const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
-  if ((e as ChartNodeEvent).label !== undefined) {
-    // @ts-expect-error
-    const { id, name, type }: { id: string, name: string, type: string } = (e as ChartNodeEvent).data
-    console.log(`NODE: ${type} ${id} ${name}`)
+  const tagGroupId = unref(selectedTagGroupId)
+  const fsType = unref(factSheetType)
+  if (tagGroupId === null || fsType === null) return
+  const fsName = lx.translateFactSheetType(fsType, 'plural')
+  const facetFilters = []
+  // const facetFilters = [{ facetKey: 'FactSheetTypes', keys: [fsType] }]
+  let label = fsName
+  if (e.data.type === 'tag') {
+    facetFilters.push({ facetKey: tagGroupId, keys: [e.data.id] })
+    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+    label = `${fsName} tagged as ${e.data.name}`
+  } else if (e.data.type === 'tagGroup') {
+    const requiredTags = cloneDeep(unref(tagsByTagGroupIndex)[tagGroupId])
+    facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
+    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+    label = `${fsName} tagged as ${e.data.name}`
   } else {
-    const { source, target, value } = (e as ChartLinkEvent).data
-    console.log(`Link: ${source} -> ${target} : ${value}`)
+    console.log('TYPE', e.data.type)
   }
+  console.log('FACET FILTERS', facetFilters)
   const sidePaneElements: lxr.SidePaneElements = {
-    teste: {
+    taggedFactSheets: {
       type: 'ShowInventory',
-      factSheetType: 'Application',
-      label: 'selected factsheets',
+      factSheetType: fsType,
+      label: label,
       facetFilters: [],
       factSheetIds: [],
-      tableColumns: []
+      tableColumns: [
+        { factSheetType: fsType, key: 'name', type: 'STRING' }
+      ]
     }
   }
   const update: (factSheetUpdate: lxr.FactSheetUpdate) => void = factSheetUpdate => {
