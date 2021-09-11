@@ -243,15 +243,15 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
           if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: tagGroup.name, target: tag.name, value: 0 }
           accumulator[tagLinkId].value++
         } else if (scopedTags.length > 1) {
-          const multipleTaggedLinkId = `${factSheetType}_MULTIPLE_`
-          if (accumulator[multipleTaggedLinkId] === undefined) accumulator[multipleTaggedLinkId] = { source: factSheetName, target: multipleTaggedName, value: 0 }
-          accumulator[multipleTaggedLinkId].value++
-          const tagGroupLinkId = `_MULTIPLE_${tagGroupId}`
-          if (accumulator[tagGroupLinkId] === undefined) accumulator[tagGroupLinkId] = { source: multipleTaggedName, target: tagGroup.name, value: 0 }
+          const tagGroupLinkId = `${factSheetType}${tagGroupId}`
+          if (accumulator[tagGroupLinkId] === undefined) accumulator[tagGroupLinkId] = { source: factSheetName, target: tagGroup.name, value: 0 }
+          accumulator[tagGroupLinkId].value++
+          const multipleTaggedLinkId = `${tagGroupId}_MULTIPLE_`
+          if (accumulator[multipleTaggedLinkId] === undefined) accumulator[multipleTaggedLinkId] = { source: tagGroup.name, target: multipleTaggedName, value: 0 }
           scopedTags.forEach(tag => {
-            accumulator[tagGroupLinkId].value++
-            const tagLinkId = `${tagGroupId}${tag.id}`
-            if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: tagGroup.name, target: tag.name, value: 0 }
+            accumulator[multipleTaggedLinkId].value++
+            const tagLinkId = `${multipleTaggedLinkId}${tag.id}`
+            if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: multipleTaggedName, target: tag.name, value: 0 }
             accumulator[tagLinkId].value++
           })
         }
@@ -346,13 +346,17 @@ const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
     facetFilters.push({ facetKey: tagGroupId, keys: [e.data.id] })
     // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
     label = `${fsName} tagged as ${e.data.name}`
-  } else if (e.data.type === 'tagGroup') {
+  } else if (e.data.type === 'tagGroup' || e.data.type === 'factSheetType') {
     const requiredTags = cloneDeep(unref(tagsByTagGroupIndex)[tagGroupId])
     facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
     // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
     label = `${fsName} tagged as ${e.data.name}`
+  } else if (e.data.type === 'multiple') {
+    console.log('MULTIPLE NODE')
   } else {
+    // link
     console.log('TYPE', e.data.type)
+    console.log('LINK', e.data)
   }
   console.log('FACET FILTERS', facetFilters)
   const sidePaneElements: lxr.SidePaneElements = {
