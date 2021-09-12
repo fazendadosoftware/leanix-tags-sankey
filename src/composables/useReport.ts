@@ -219,11 +219,11 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
     const fsTypeViewModel: FactSheetTypeViewModel = getCurrentWorkspaceSetup().settings.viewModel.factSheets.find(({ type }: { type: string }) => type === factSheetType)
     const nodes: ChartSankeyNodeData[] = [
       { name: factSheetName, color: fsTypeViewModel.bgColor, type: 'factSheetType' },
-      { name: tagGroup.name, color: tagGroup.fill, type: 'tagGroup', id: tagGroup.id },
+      { name: tagGroup.name, color: tagGroup.fill, type: 'tagGroup', id: tagGroup.id, factSheetCount: taggedFactSheets.length },
       ...tagGroup.tags.map(({ id, name, color }) => ({ name, color, type: 'tag', id }))
     ]
     const multipleTaggedName = 'Multiple Tagged'
-    if (tagGroup.mode === 'MULTIPLE') nodes.push({ name: multipleTaggedName, color: 'black', type: 'multiple' })
+    if (tagGroup.mode === 'MULTIPLE') nodes.push({ name: multipleTaggedName, color: 'black', type: 'multiple', factSheetCount: 0 })
 
     const accumulator: Record<string, ChartSankeyLinkData> = {}
     if (unref(showUntaggedFactSheets) && missingCount > 0) {
@@ -249,6 +249,8 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
           accumulator[tagGroupLinkId].value++
           const multipleTaggedLinkId = `${tagGroupId}_MULTIPLE_`
           if (accumulator[multipleTaggedLinkId] === undefined) accumulator[multipleTaggedLinkId] = { source: tagGroup.name, target: multipleTaggedName, value: 0 }
+          const multipleNode = nodes.find(({ type }) => type === 'multiple')
+          if (multipleNode !== undefined) multipleNode.factSheetCount++
           scopedTags.forEach(tag => {
             accumulator[multipleTaggedLinkId].value++
             const tagLinkId = `${multipleTaggedLinkId}${tag.id}`
@@ -267,6 +269,55 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const tooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number): string => {
+  const _factSheetType = unref(factSheetType)
+  if (_factSheetType === null) throw Error('factSheetType cannot be null')
+  let template
+  switch (data.type) { /* eslint-disable @typescript-eslint/restrict-template-expressions */
+    case 'tag':
+      template = `
+        <div class="flex flex-col items-center">
+          <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')} </div>
+          <div>${value === 1 ? 'is' : 'are'} tagged as</div>
+          <div class="font-black">${data.name}</div>
+        </div>
+        `
+      break
+    case 'tagGroup':
+      template = `
+        <div class="flex flex-col items-center">
+          <div>Tag Group</div>
+          <div><span class="font-black">${data.name}</span></div>
+          <div>has <span class="font-black">${data.factSheetCount} ${lx.translateFactSheetType(_factSheetType, data.factSheetCount === 1 ? 'singular' : 'plural')}</span></div>
+          <div>with <span class="font-black">${value} ${value === 1 ? 'Tag' : 'Tags'}</span> applied</div>
+        </div>
+        `
+      break
+    case 'factSheetType':
+      template = `
+        <div class="flex flex-col items-center">
+          <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')}</div>
+          <div>${value === 1 ? 'is' : 'are'} tagged</div>
+        </div>
+        `
+      break
+    case 'multiple':
+      template = `
+        <div class="flex flex-col items-center">
+          <div class="font-black">${data.factSheetCount} ${lx.translateFactSheetType(_factSheetType, data.factSheetCount === 1 ? 'singular' : 'plural')}</div>
+          <div>${data.factSheetCount === 1 ? 'has' : 'have'} multiple tags</div>
+          <div>with a total of ${value} ${value === 1 ? 'Tag' : 'Tags'}</div>
+        </div>
+        `
+      break
+    default:
+      template = 'unknown data type'
+      console.log('UNKNWON NODE TYPE', data, value)
+  }
+  return template
+}
+
 const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null => {
   const _factSheetType = unref(factSheetType)
   if (_factSheetType === null) return null
@@ -279,11 +330,10 @@ const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null =>
     node: {
       draggableX: false,
       draggableY: false,
-      padding: 50
-    },
-    link: {
-      // sourceColor: (data, sourceColor) => sourceColor,
-      // targetColor: (data, targetColor) => targetColor
+      padding: 50,
+      tooltip: {
+        html: tooltipTemplateGenerator
+      }
     }
   }
   return chartData

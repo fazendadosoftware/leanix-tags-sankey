@@ -86,4 +86,10 @@ onUnmounted(() => {
   .d2b-sankey-link, .d2b-sankey-node {
     @apply cursor-pointer text-sm tracking-tight;
   }
+  .d2b-tooltip {
+    @apply text-xs rounded shadow-none;
+  }
+  .d2b-tooltip-content {
+    @apply px-2 py-1;
+  }
 </style>
