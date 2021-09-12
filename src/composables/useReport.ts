@@ -269,8 +269,7 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const tooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number): string => {
+const nodeTooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number): string => {
   const _factSheetType = unref(factSheetType)
   if (_factSheetType === null) throw Error('factSheetType cannot be null')
   let template
@@ -298,7 +297,7 @@ const tooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number): str
       template = `
         <div class="flex flex-col items-center">
           <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')}</div>
-          <div>${value === 1 ? 'is' : 'are'} tagged</div>
+          <div>${unref(showUntaggedFactSheets) ? 'in the workspace' : `${value === 1 ? 'is' : 'are'} tagged`}</div>
         </div>
         `
       break
@@ -311,9 +310,60 @@ const tooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number): str
         </div>
         `
       break
+    case '_UNTAGGED_':
+      template = `
+        <div class="flex flex-col items-center">
+          <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')} </div>
+          <div>${value === 1 ? 'is' : 'are'} not tagged</div>
+        </div>
+        `
+      break
     default:
       template = 'unknown data type'
       console.log('UNKNWON NODE TYPE', data, value)
+  }
+  return template
+}
+
+const linkTooltipTemplateGenerator = (data: ChartSankeyLinkData, source: ChartSankeyNodeData, target: ChartSankeyNodeData): string => {
+  const sourceType = source.type
+  const targetType = target.type
+  let template = ''
+  const _factSheetType = unref(factSheetType) ?? ''
+  if (sourceType === 'factSheetType') {
+    const value = target.factSheetCount
+    template = `
+      <div class="flex flex-col items-center">
+        <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')}</div>
+        <div>${value === 1 ? 'has' : 'have'} <span class="font-black">${target.name}</span> tags</div>
+      </div>
+      `
+  } else if (sourceType === 'tagGroup' && targetType === 'tag') {
+    template = `
+      <div class="flex flex-col items-center">
+        <div><span class="font-black">${data.value} ${lx.translateFactSheetType(_factSheetType, data.value === 1 ? 'singular' : 'plural')}</span></div>
+        <div>${data.value === 1 ? 'is' : 'are'} exclusively tagged as</div>
+        <div><span class="font-black">${data.target}</span></div>
+      </div>
+      `
+  } else if (sourceType === 'tagGroup' && targetType === 'multiple') {
+    template = `
+      <div class="flex flex-col items-center">
+        <div><span class="font-black">${target.factSheetCount} ${lx.translateFactSheetType(_factSheetType, target.factSheetCount === 1 ? 'singular' : 'plural')}</span></div>
+        <div>${target.factSheetCount === 1 ? 'has' : 'have'} multiple tags</div>
+      </div>
+      `
+  } else if (sourceType === 'multiple' && targetType === 'tag') {
+    template = `
+      <div class="flex flex-col items-center">
+        <div><span class="font-black">${data.value} ${lx.translateFactSheetType(_factSheetType, data.value === 1 ? 'singular' : 'plural')}</span></div>
+        <div>${data.value === 1 ? 'is' : 'are'} non-exclusively tagged as</div>
+        <div><span class="font-black">${data.target}</span></div>
+      </div>
+      `
+  } else {
+    // FIXME:
+    throw Error('UNKNOWN LINK TYPE')
   }
   return template
 }
@@ -332,7 +382,12 @@ const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null =>
       draggableY: false,
       padding: 50,
       tooltip: {
-        html: tooltipTemplateGenerator
+        html: nodeTooltipTemplateGenerator
+      }
+    },
+    link: {
+      tooltip: {
+        html: linkTooltipTemplateGenerator
       }
     }
   }
