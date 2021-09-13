@@ -472,14 +472,19 @@ const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
       ],
       align: 'right'
     },
+    tableBadge: {
+      type: 'Badge',
+      label: 'Total Results',
+      value: 3
+    },
     table: {
       type: 'Table',
       label: 'Tagged FactSheets',
       headerRow: {
-        labels: ['first', 'second', 'third']
+        labels: ['Type', 'Name']
       },
       rows: [
-        { link: 'www.google.com', cells: ['teste', 'ok', 'nok'] }
+        { link: 'www.google.com', cells: ['Application', 'My Application'] }
       ]
     }
   }
