@@ -19,6 +19,8 @@ const selectedTagGroupId: Ref<TagGroupId | null> = ref(null)
 const filter: Ref<Filter | null> = ref(null)
 // holder for chart data
 const chartData: Ref<ChartSankeyConfig | null> = ref(null)
+// holder for the factsheet index
+const factSheetIndex: Ref<Record<string, FactSheetNode>> = ref({})
 
 // report settings
 const showUntaggedFactSheets: Ref<boolean> = ref(false)
@@ -222,8 +224,9 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
       { name: tagGroup.name, color: tagGroup.fill, type: 'tagGroup', id: tagGroup.id, factSheetCount: taggedFactSheets.length },
       ...tagGroup.tags.map(({ id, name, color }) => ({ name, color, type: 'tag', id }))
     ]
+
     const multipleTaggedName = 'Multiple Tagged'
-    if (tagGroup.mode === 'MULTIPLE') nodes.push({ name: multipleTaggedName, color: 'black', type: 'multiple', factSheetCount: 0, tagGroupName: tagGroup.name })
+    if (tagGroup.mode === 'MULTIPLE') nodes.push({ name: multipleTaggedName, color: 'black', type: 'multiple', factSheetCount: 0, factSheetIds: [], tagGroupName: tagGroup.name })
 
     const accumulator: Record<string, ChartSankeyLinkData> = {}
     if (unref(showUntaggedFactSheets) && missingCount > 0) {
@@ -231,31 +234,40 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
       nodes.push({ name: untaggedName, color: 'black', type: '_UNTAGGED_' })
       accumulator[`${factSheetType}_MISSING_`] = { source: factSheetName, target: untaggedName, value: missingCount }
     }
+    factSheetIndex.value = taggedFactSheets.reduce((accumulator, factSheet) => ({ ...accumulator, [factSheet.id]: factSheet }), {})
+
     const linkIndex: Record<string, ChartSankeyLinkData> = taggedFactSheets
       .reduce((accumulator, factSheet: FactSheetNode) => {
         const scopedTags = factSheet.tags.filter(tag => (tag?.tagGroup?.id === tagGroupId) || (tagGroupId === '_TAGS_' && tag.tagGroup === null))
         if (scopedTags.length === 0) return accumulator
         else if (scopedTags.length === 1) {
           const linkId = `${factSheetType}${tagGroup.id}`
-          if (accumulator[linkId] === undefined) accumulator[linkId] = { source: factSheetName, target: tagGroup.name, value: 0 }
-          accumulator[`${factSheetType}${tagGroup.id}`].value++
+          if (accumulator[linkId] === undefined) accumulator[linkId] = { source: factSheetName, target: tagGroup.name, value: 0, factSheetIds: [] }
+          accumulator[linkId].value++
+          accumulator[linkId].factSheetIds.push(factSheet.id)
           const [tag] = scopedTags
           const tagLinkId = `${tagGroupId}${tag.id}`
-          if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: tagGroup.name, target: tag.name, value: 0 }
+          if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: tagGroup.name, target: tag.name, value: 0, factSheetIds: [] }
           accumulator[tagLinkId].value++
+          accumulator[tagLinkId].factSheetIds.push(factSheet.id)
         } else if (scopedTags.length > 1) {
           const tagGroupLinkId = `${factSheetType}${tagGroupId}`
-          if (accumulator[tagGroupLinkId] === undefined) accumulator[tagGroupLinkId] = { source: factSheetName, target: tagGroup.name, value: 0 }
+          if (accumulator[tagGroupLinkId] === undefined) accumulator[tagGroupLinkId] = { source: factSheetName, target: tagGroup.name, value: 0, factSheetIds: [] }
           accumulator[tagGroupLinkId].value++
+          accumulator[tagGroupLinkId].factSheetIds.push(factSheet.id)
           const multipleTaggedLinkId = `${tagGroupId}_MULTIPLE_`
-          if (accumulator[multipleTaggedLinkId] === undefined) accumulator[multipleTaggedLinkId] = { source: tagGroup.name, target: multipleTaggedName, value: 0 }
+          if (accumulator[multipleTaggedLinkId] === undefined) accumulator[multipleTaggedLinkId] = { source: tagGroup.name, target: multipleTaggedName, value: 0, factSheetIds: [] }
           const multipleNode = nodes.find(({ type }) => type === 'multiple')
-          if (multipleNode !== undefined) multipleNode.factSheetCount++
+          if (multipleNode !== undefined) {
+            multipleNode.factSheetCount++
+            multipleNode.factSheetIds.push(factSheet.id)
+          }
           scopedTags.forEach(tag => {
             accumulator[multipleTaggedLinkId].value++
             const tagLinkId = `${multipleTaggedLinkId}${tag.id}`
-            if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: multipleTaggedName, target: tag.name, value: 0 }
+            if (accumulator[tagLinkId] === undefined) accumulator[tagLinkId] = { source: multipleTaggedName, target: tag.name, value: 0, factSheetIds: [] }
             accumulator[tagLinkId].value++
+            accumulator[tagLinkId].factSheetIds.push(factSheet.id)
           })
         }
         return accumulator
@@ -443,23 +455,41 @@ interface ChartNodeEvent extends ChartEvent {
 const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
   const tagGroupId = unref(selectedTagGroupId)
   const fsType = unref(factSheetType)
+  // @ts-expect-error
+  const { links } = unref(chartData)
   if (tagGroupId === null || fsType === null) return
-  // const facetFilters = []
+  let factSheetIds: string[] = []
   const facetFilters = [{ facetKey: 'FactSheetTypes', keys: [fsType] }]
   if (e.data.type === 'tag') {
+    factSheetIds = Array.from(links
+      .reduce((accumulator: Set<string>, link: any) => {
+        if (link.target !== e.data.name) return accumulator
+        link.factSheetIds.forEach((factSheetId: string) => accumulator.add(factSheetId))
+        return accumulator
+      }, new Set()))
     facetFilters.push({ facetKey: tagGroupId, keys: [e.data.id] })
-    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
   } else if (e.data.type === 'tagGroup' || e.data.type === 'factSheetType') {
+    factSheetIds = Array.from(links
+      .reduce((accumulator: Set<string>, link: any) => {
+        if (link.target !== e.data.name) return accumulator
+        link.factSheetIds.forEach((factSheetId: string) => accumulator.add(factSheetId))
+        return accumulator
+      }, new Set()))
     const requiredTags = cloneDeep(unref(tagsByTagGroupIndex)[tagGroupId])
     facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
-    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
   } else if (e.data.type === 'multiple') {
-    console.log('MULTIPLE NODE')
+    factSheetIds = e.data.factSheetIds
   } else {
     // link
     console.log('TYPE', e.data.type)
     console.log('LINK', e.data)
   }
+  const _factSheetIndex = unref(factSheetIndex)
+  const factSheets = factSheetIds.map(id => _factSheetIndex[id])
+  const { settings: { baseUrl } } = getCurrentWorkspaceSetup()
+
+  const headerRowKeys = ['name']
+
   const sidePaneElements: lxr.SidePaneElements = {
     showInInventoryLink: {
       type: 'ShowInventory',
@@ -475,17 +505,20 @@ const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
     tableBadge: {
       type: 'Badge',
       label: 'Total Results',
-      value: 3
+      value: factSheets.length
     },
     table: {
       type: 'Table',
       label: 'Tagged FactSheets',
       headerRow: {
-        labels: ['Type', 'Name']
+        labels: headerRowKeys.map(key => lx.translateField(unref(factSheetType) ?? '', key))
       },
-      rows: [
-        { link: 'www.google.com', cells: ['Application', 'My Application'] }
-      ]
+      rows: factSheets
+        .map(factSheet => ({
+          link: `${baseUrl}/factsheet/${factSheet.type}/${factSheet.id}`,
+          // @ts-expect-error
+          cells: headerRowKeys.map(key => factSheet[key])
+        }))
     }
   }
   const update: (factSheetUpdate: lxr.FactSheetUpdate) => void = factSheetUpdate => {
