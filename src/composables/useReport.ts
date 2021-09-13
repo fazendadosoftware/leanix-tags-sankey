@@ -223,7 +223,7 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
       ...tagGroup.tags.map(({ id, name, color }) => ({ name, color, type: 'tag', id }))
     ]
     const multipleTaggedName = 'Multiple Tagged'
-    if (tagGroup.mode === 'MULTIPLE') nodes.push({ name: multipleTaggedName, color: 'black', type: 'multiple', factSheetCount: 0 })
+    if (tagGroup.mode === 'MULTIPLE') nodes.push({ name: multipleTaggedName, color: 'black', type: 'multiple', factSheetCount: 0, tagGroupName: tagGroup.name })
 
     const accumulator: Record<string, ChartSankeyLinkData> = {}
     if (unref(showUntaggedFactSheets) && missingCount > 0) {
@@ -305,8 +305,8 @@ const nodeTooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number):
       template = `
         <div class="flex flex-col items-center">
           <div class="font-black">${data.factSheetCount} ${lx.translateFactSheetType(_factSheetType, data.factSheetCount === 1 ? 'singular' : 'plural')}</div>
-          <div>${data.factSheetCount === 1 ? 'has' : 'have'} multiple tags</div>
-          <div>with a total of ${value} ${value === 1 ? 'Tag' : 'Tags'}</div>
+          <div>${data.factSheetCount === 1 ? 'has' : 'have'} multiple <span class="font-black">${data.tagGroupName}</span> tags</div>
+          <div>with a total of <span class="font-bold">${value} ${value === 1 ? 'tag' : 'tags'}</span></div>
         </div>
         `
       break
@@ -350,7 +350,7 @@ const linkTooltipTemplateGenerator = (data: ChartSankeyLinkData, source: ChartSa
     template = `
       <div class="flex flex-col items-center">
         <div><span class="font-black">${target.factSheetCount} ${lx.translateFactSheetType(_factSheetType, target.factSheetCount === 1 ? 'singular' : 'plural')}</span></div>
-        <div>${target.factSheetCount === 1 ? 'has' : 'have'} multiple tags</div>
+        <div>${target.factSheetCount === 1 ? 'has' : 'have'} multiple <span class="font-black">${source.name}</span> tags</div>
       </div>
       `
   } else if (sourceType === 'multiple' && targetType === 'tag') {
@@ -444,19 +444,15 @@ const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
   const tagGroupId = unref(selectedTagGroupId)
   const fsType = unref(factSheetType)
   if (tagGroupId === null || fsType === null) return
-  const fsName = lx.translateFactSheetType(fsType, 'plural')
-  const facetFilters = []
-  // const facetFilters = [{ facetKey: 'FactSheetTypes', keys: [fsType] }]
-  let label = fsName
+  // const facetFilters = []
+  const facetFilters = [{ facetKey: 'FactSheetTypes', keys: [fsType] }]
   if (e.data.type === 'tag') {
     facetFilters.push({ facetKey: tagGroupId, keys: [e.data.id] })
     // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-    label = `${fsName} tagged as ${e.data.name}`
   } else if (e.data.type === 'tagGroup' || e.data.type === 'factSheetType') {
     const requiredTags = cloneDeep(unref(tagsByTagGroupIndex)[tagGroupId])
     facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
     // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-    label = `${fsName} tagged as ${e.data.name}`
   } else if (e.data.type === 'multiple') {
     console.log('MULTIPLE NODE')
   } else {
@@ -464,16 +460,26 @@ const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
     console.log('TYPE', e.data.type)
     console.log('LINK', e.data)
   }
-  console.log('FACET FILTERS', facetFilters)
   const sidePaneElements: lxr.SidePaneElements = {
-    taggedFactSheets: {
+    showInInventoryLink: {
       type: 'ShowInventory',
       factSheetType: fsType,
-      label: label,
-      facetFilters: [],
+      label: 'Show in Inventory',
+      facetFilters,
       factSheetIds: [],
       tableColumns: [
         { factSheetType: fsType, key: 'name', type: 'STRING' }
+      ],
+      align: 'right'
+    },
+    table: {
+      type: 'Table',
+      label: 'Tagged FactSheets',
+      headerRow: {
+        labels: ['first', 'second', 'third']
+      },
+      rows: [
+        { link: 'www.google.com', cells: ['teste', 'ok', 'nok'] }
       ]
     }
   }
