@@ -62,6 +62,7 @@ const update = (options?: { skipTransition: boolean }) => {
 
   emit('rendered', _root, _generator)
   watcher()
+  setTimeout(() => updateDefer(), 0)
 }
 
 const updateNow = () => update({ skipTransition: true })

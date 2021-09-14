@@ -411,6 +411,7 @@ const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null =>
   const chartData: ChartSankeyConfig = {
     ...dataset,
     // iterations: 10,
+    padding: 50,
     node: {
       draggableX: false,
       draggableY: false,
@@ -436,7 +437,8 @@ const setReportConfig = (): void => {
   factSheetType.value = savedState?.customState?.factSheetType ??
     ((config.factSheetType === 'Default' || config.factSheetType === null) ? defaultFactSheetType : config.factSheetType) ??
     defaultFactSheetType
-  showUntaggedFactSheets.value = config.showUntaggedFactSheets ?? unref(showUntaggedFactSheets)
+  if (savedState?.customState?.showUntaggedFactSheets !== undefined) showUntaggedFactSheets.value = savedState?.customState?.showUntaggedFactSheets
+  if (savedState?.customState?.selectedTagGroupId !== undefined) selectedTagGroupId.value = savedState?.customState?.selectedTagGroupId
 }
 
 /**
