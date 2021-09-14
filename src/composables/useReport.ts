@@ -298,10 +298,9 @@ const nodeTooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number):
     case 'tagGroup':
       template = `
         <div class="flex flex-col items-center">
-          <div>Tag Group</div>
-          <div><span class="font-black">${data.name}</span></div>
-          <div>has <span class="font-black">${data.factSheetCount} ${lx.translateFactSheetType(_factSheetType, data.factSheetCount === 1 ? 'singular' : 'plural')}</span></div>
-          <div>with <span class="font-black">${value} ${value === 1 ? 'Tag' : 'Tags'}</span> applied</div>
+          <div><span class="font-black">${data.factSheetCount} ${lx.translateFactSheetType(_factSheetType, data.factSheetCount === 1 ? 'singular' : 'plural')}</span></div>
+          <div>have a total of <span class="font-black">${value} ${value === 1 ? 'tag' : 'tags'}</span></div>
+          <div>of tag group <span class="font-black">${data.name}</span></div>
         </div>
         `
       break
@@ -342,7 +341,17 @@ const linkTooltipTemplateGenerator = (data: ChartSankeyLinkData, source: ChartSa
   const targetType = target.type
   let template = ''
   const _factSheetType = unref(factSheetType) ?? ''
-  if (sourceType === 'factSheetType') {
+  if (data.target === 'Untagged') {
+    const { name: tagGroupName = null } = unref(tagGroups).find(({ id }) => id === unref(selectedTagGroupId)) ?? {}
+    template = `${data.value} ${data.source} ${data.value === 1 ? 'is' : 'are'} untagged`
+    template = `
+      <div class="flex flex-col items-center">
+        <div class="font-black">${data.value} ${data.source}</div>
+        <div>do not have</div>
+        <div><span class="font-black">${tagGroupName}</span> tags</div>
+      </div>
+      `
+  } else if (sourceType === 'factSheetType') {
     const value = target.factSheetCount
     template = `
       <div class="flex flex-col items-center">
@@ -395,7 +404,8 @@ const computeChartData = (dataset: ChartSankeyData): ChartSankeyConfig | null =>
       padding: 50,
       tooltip: {
         html: nodeTooltipTemplateGenerator
-      }
+      },
+      sort: null
     },
     link: {
       tooltip: {
