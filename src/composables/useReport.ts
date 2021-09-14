@@ -452,67 +452,92 @@ interface ChartNodeEvent extends ChartEvent {
   targetLinks: ChartSankeyLinkData[]
 }
 
-const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
+const clickHandler = async (e: ChartLinkEvent | ChartNodeEvent): Promise<void> => {
   const tagGroupId = unref(selectedTagGroupId)
   const fsType = unref(factSheetType)
   // @ts-expect-error
   const { links } = unref(chartData)
   if (tagGroupId === null || fsType === null) return
   let factSheetIds: string[] = []
+  let label = ''
   const facetFilters = [{ facetKey: 'FactSheetTypes', keys: [fsType] }]
-  if (e.data.type === 'tag') {
-    factSheetIds = Array.from(links
-      .reduce((accumulator: Set<string>, link: any) => {
-        if (link.target !== e.data.name) return accumulator
-        link.factSheetIds.forEach((factSheetId: string) => accumulator.add(factSheetId))
-        return accumulator
-      }, new Set()))
-    facetFilters.push({ facetKey: tagGroupId, keys: [e.data.id] })
-  } else if (e.data.type === 'tagGroup' || e.data.type === 'factSheetType') {
-    factSheetIds = Array.from(links
-      .reduce((accumulator: Set<string>, link: any) => {
-        if (link.target !== e.data.name) return accumulator
-        link.factSheetIds.forEach((factSheetId: string) => accumulator.add(factSheetId))
-        return accumulator
-      }, new Set()))
-    const requiredTags = cloneDeep(unref(tagsByTagGroupIndex)[tagGroupId])
-    facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
+  if (e.data.type === 'factSheetType' || e.data.type === 'tagGroup' || e.data.type === 'tag') {
+    factSheetIds = e.data.type === 'factSheetType'
+      ? Object.keys(unref(factSheetIndex))
+      : Array.from(links
+        .reduce((accumulator: Set<string>, link: any) => {
+          if (link.target !== e.data.name) return accumulator
+          link.factSheetIds.forEach((factSheetId: string) => accumulator.add(factSheetId))
+          return accumulator
+        }, new Set()))
+    facetFilters.push({
+      facetKey: tagGroupId,
+      keys: ['factSheetType', 'tagGroup'].includes(e.data.type)
+        ? cloneDeep(unref(tagsByTagGroupIndex)[tagGroupId])
+        : [e.data.id]
+    })
+    switch (e.data.type) {
+      case 'factSheetType':
+        // @ts-expect-error
+        label = `${lx.translateFactSheetType(unref(factSheetType) ?? '', 'plural')} tagged as ${e.sourceLinks[0].targetKey}`
+        break
+      case 'tagGroup':
+      case 'tag':
+        // @ts-expect-error
+        label = `${lx.translateFactSheetType(unref(factSheetType) ?? '', 'plural')} tagged as ${e.label}`
+        break
+      default:
+        console.log(e.data.type, e)
+    }
   } else if (e.data.type === 'multiple') {
+    label = `${lx.translateFactSheetType(unref(factSheetType) ?? '', 'plural')} with multiple tags of ${e.data.tagGroupName}`
     factSheetIds = e.data.factSheetIds
   } else {
-    // link
-    console.log('TYPE', e.data.type)
-    console.log('LINK', e.data)
+    // @ts-expect-error
+    if (e.key === 'Untagged' || e?.target.key === 'Untagged') {
+      label = `Untagged ${lx.translateFactSheetType(unref(factSheetType) ?? '', 'plural')}`
+      const query = await import('@/graphql/FetchFactSheets.gql').then(query => print(query.default))
+      const variables = {
+        filter: {
+          facetFilters: [
+            { facetKey: 'FactSheetTypes', keys: [unref(factSheetType)] },
+            { facetKey: unref(selectedTagGroupId), keys: ['__missing__'] }
+          ]
+        }
+      }
+      const untaggedFactSheets = await lx.executeGraphQL(query, JSON.stringify(variables))
+        .then(({ allFactSheets }) => allFactSheets.edges.map(({ node }: { node: any }) => node))
+      factSheetIds = untaggedFactSheets.map(({ id }: { id: string }) => id)
+      const untaggedFactSheetsFragment = untaggedFactSheets.reduce((accumulator: any, factSheet: any) => ({ ...accumulator, [factSheet.id]: factSheet }), {})
+      factSheetIndex.value = { ...unref(factSheetIndex), ...untaggedFactSheetsFragment }
+    } else {
+      label = e.key
+      // @ts-expect-error
+      factSheetIds = e?.target?.data.factSheetIds ?? e.data.factSheetIds
+    }
   }
   const _factSheetIndex = unref(factSheetIndex)
-  const factSheets = factSheetIds.map(id => _factSheetIndex[id])
+  const factSheets = factSheetIds
+    .map(id => _factSheetIndex[id])
+    .sort(({ name: A }, { name: B }) => {
+      A = A.toLowerCase()
+      B = B.toLowerCase()
+      return A > B ? 1 : A < B ? -1 : 0
+    })
   const { settings: { baseUrl } } = getCurrentWorkspaceSetup()
 
   const headerRowKeys = ['name']
 
   const sidePaneElements: lxr.SidePaneElements = {
-    showInInventoryLink: {
-      type: 'ShowInventory',
-      factSheetType: fsType,
-      label: 'Show in Inventory',
-      facetFilters,
-      factSheetIds: [],
-      tableColumns: [
-        { factSheetType: fsType, key: 'name', type: 'STRING' }
-      ],
-      align: 'right'
-    },
     tableBadge: {
       type: 'Badge',
-      label: 'Total Results',
+      label: `Total Result${factSheets.length === 1 ? '' : 's'}`,
       value: factSheets.length
     },
     table: {
       type: 'Table',
-      label: 'Tagged FactSheets',
-      headerRow: {
-        labels: headerRowKeys.map(key => lx.translateField(unref(factSheetType) ?? '', key))
-      },
+      label,
+      headerRow: { labels: headerRowKeys.map(key => lx.translateField(unref(factSheetType) ?? '', key)) },
       rows: factSheets
         .map(factSheet => ({
           link: `${baseUrl}/factsheet/${factSheet.type}/${factSheet.id}`,
@@ -521,10 +546,7 @@ const clickHandler = (e: ChartLinkEvent | ChartNodeEvent): void => {
         }))
     }
   }
-  const update: (factSheetUpdate: lxr.FactSheetUpdate) => void = factSheetUpdate => {
-    console.log('UPDATED', factSheetUpdate)
-  }
-  lx.openSidePane(sidePaneElements, update)
+  lx.openSidePane(sidePaneElements, () => {})
 }
 
 const updateData = async (): Promise<void> => {

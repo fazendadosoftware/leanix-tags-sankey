@@ -1,0 +1,22 @@
+query FetchFactSheets($filter: FilterInput) {
+  allFactSheets(filter: $filter) {
+    totalCount
+    edges {
+      node {
+        id
+        name
+        displayName
+        type
+        tags {
+          id
+          name
+          color
+          tagGroup {
+            id
+            name
+          }
+        }
+      }
+    }
+  }
+}
