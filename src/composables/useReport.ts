@@ -21,6 +21,8 @@ const filter: Ref<Filter | null> = ref(null)
 const chartData: Ref<ChartSankeyConfig | null> = ref(null)
 // holder for the factsheet index
 const factSheetIndex: Ref<Record<string, FactSheetNode>> = ref({})
+// holder for the factsheet ids
+const taggedFactSheetIds: Ref<string[]> = ref([])
 // holder for the untagged factsheet ids
 const untaggedFactSheetIds: Ref<string[]> = ref([])
 
@@ -222,8 +224,6 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
         untaggedFactSheets: untaggedFactSheets.map(({ node }: { node: any }) => node)
       }))
 
-    // eslint-disable-next-line
-    const totalCount = totalFactSheetCount
     const missingCount = totalFactSheetCount - taggedFactSheets.length
 
     const factSheetName = lx.translateFactSheetType(factSheetType, 'plural')
@@ -247,6 +247,7 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
     }
     factSheetIndex.value = [...taggedFactSheets, ...untaggedFactSheets].reduce((accumulator, factSheet) => ({ ...accumulator, [factSheet.id]: factSheet }), {})
 
+    taggedFactSheetIds.value = taggedFactSheets.map(({ id }) => id)
     untaggedFactSheetIds.value = untaggedFactSheets.map(({ id }) => id)
 
     const linkIndex: Record<string, ChartSankeyLinkData> = taggedFactSheets
@@ -297,21 +298,28 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
 const nodeTooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number): string => {
   const _factSheetType = unref(factSheetType)
   if (_factSheetType === null) throw Error('factSheetType cannot be null')
+  const allFactSheetCount = Object.keys(unref(factSheetIndex)).length
+  const totalFactSheetCount = unref(showUntaggedFactSheets) ? allFactSheetCount : unref(taggedFactSheetIds).length
   let template
+  let taggingPercentage: string
   switch (data.type) { /* eslint-disable @typescript-eslint/restrict-template-expressions */
     case 'tag':
+      taggingPercentage = (value * 100 / totalFactSheetCount).toFixed(1)
       template = `
         <div class="flex flex-col items-center">
-          <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')} </div>
+          <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')}</div>
+          <div>out of ${totalFactSheetCount} <span class="font-black">(${taggingPercentage}%)</span></div>
           <div>${value === 1 ? 'is' : 'are'} tagged as</div>
           <div class="font-black">${data.name}</div>
         </div>
         `
       break
     case 'tagGroup':
+      taggingPercentage = (data.factSheetCount * 100 / totalFactSheetCount).toFixed(1)
       template = `
         <div class="flex flex-col items-center">
           <div><span class="font-black">${data.factSheetCount} ${lx.translateFactSheetType(_factSheetType, data.factSheetCount === 1 ? 'singular' : 'plural')}</span></div>
+          <div>out of ${totalFactSheetCount} <span class="font-black">(${taggingPercentage}%)</span></div>
           <div>have a total of <span class="font-black">${value} ${value === 1 ? 'tag' : 'tags'}</span></div>
           <div>of tag group <span class="font-black">${data.name}</span></div>
         </div>
@@ -326,18 +334,22 @@ const nodeTooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number):
         `
       break
     case 'multiple':
+      taggingPercentage = (data.factSheetCount * 100 / totalFactSheetCount).toFixed(1)
       template = `
         <div class="flex flex-col items-center">
           <div class="font-black">${data.factSheetCount} ${lx.translateFactSheetType(_factSheetType, data.factSheetCount === 1 ? 'singular' : 'plural')}</div>
+          <div>out of ${totalFactSheetCount} <span class="font-black">(${taggingPercentage}%)</span></div>
           <div>${data.factSheetCount === 1 ? 'has' : 'have'} multiple <span class="font-black">${data.tagGroupName}</span> tags</div>
           <div>with a total of <span class="font-bold">${value} ${value === 1 ? 'tag' : 'tags'}</span></div>
         </div>
         `
       break
     case '_UNTAGGED_':
+      taggingPercentage = (value * 100 / totalFactSheetCount).toFixed(1)
       template = `
         <div class="flex flex-col items-center">
           <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')} </div>
+          <div>out of ${totalFactSheetCount} <span class="font-black">(${taggingPercentage}%)</span></div>
           <div>${value === 1 ? 'is' : 'are'} not tagged</div>
         </div>
         `
@@ -350,47 +362,54 @@ const nodeTooltipTemplateGenerator = (data: ChartSankeyNodeData, value: number):
 }
 
 const linkTooltipTemplateGenerator = (data: ChartSankeyLinkData, source: ChartSankeyNodeData, target: ChartSankeyNodeData): string => {
+  const allFactSheetCount = Object.keys(unref(factSheetIndex)).length
+  const totalFactSheetCount = unref(showUntaggedFactSheets) ? allFactSheetCount : unref(taggedFactSheetIds).length
   const sourceType = source.type
   const targetType = target.type
   let template = ''
   const _factSheetType = unref(factSheetType) ?? ''
   if (data.target === 'Untagged') {
+    const taggingPercentage = (data.value * 100 / totalFactSheetCount).toFixed(1)
     const { name: tagGroupName = null } = unref(tagGroups).find(({ id }) => id === unref(selectedTagGroupId)) ?? {}
     template = `${data.value} ${data.source} ${data.value === 1 ? 'is' : 'are'} untagged`
     template = `
       <div class="flex flex-col items-center">
-        <div class="font-black">${data.value} ${data.source}</div>
+        <div class="font-black">${data.value} ${data.source} (${taggingPercentage}%)</div>
         <div>do not have</div>
         <div><span class="font-black">${tagGroupName}</span> tags</div>
       </div>
       `
   } else if (sourceType === 'factSheetType') {
     const value = target.factSheetCount
+    const taggingPercentage = (value * 100 / totalFactSheetCount).toFixed(1)
     template = `
       <div class="flex flex-col items-center">
-        <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')}</div>
+        <div class="font-black">${value} ${lx.translateFactSheetType(_factSheetType, value === 1 ? 'singular' : 'plural')} (${taggingPercentage}%)</div>
         <div>${value === 1 ? 'has' : 'have'} <span class="font-black">${target.name}</span> tags</div>
       </div>
       `
   } else if (sourceType === 'tagGroup' && targetType === 'tag') {
+    const taggingPercentage = (data.value * 100 / totalFactSheetCount).toFixed(1)
     template = `
       <div class="flex flex-col items-center">
-        <div><span class="font-black">${data.value} ${lx.translateFactSheetType(_factSheetType, data.value === 1 ? 'singular' : 'plural')}</span></div>
+        <div><span class="font-black">${data.value} ${lx.translateFactSheetType(_factSheetType, data.value === 1 ? 'singular' : 'plural')} (${taggingPercentage}%)</span></div>
         <div>${data.value === 1 ? 'is' : 'are'} exclusively tagged as</div>
         <div><span class="font-black">${data.target}</span></div>
       </div>
       `
   } else if (sourceType === 'tagGroup' && targetType === 'multiple') {
+    const taggingPercentage = (target.factSheetCount * 100 / totalFactSheetCount).toFixed(1)
     template = `
       <div class="flex flex-col items-center">
-        <div><span class="font-black">${target.factSheetCount} ${lx.translateFactSheetType(_factSheetType, target.factSheetCount === 1 ? 'singular' : 'plural')}</span></div>
+        <div><span class="font-black">${target.factSheetCount} ${lx.translateFactSheetType(_factSheetType, target.factSheetCount === 1 ? 'singular' : 'plural')} (${taggingPercentage}%)</span></div>
         <div>${target.factSheetCount === 1 ? 'has' : 'have'} multiple <span class="font-black">${source.name}</span> tags</div>
       </div>
       `
   } else if (sourceType === 'multiple' && targetType === 'tag') {
+    const taggingPercentage = (data.value * 100 / totalFactSheetCount).toFixed(1)
     template = `
       <div class="flex flex-col items-center">
-        <div><span class="font-black">${data.value} ${lx.translateFactSheetType(_factSheetType, data.value === 1 ? 'singular' : 'plural')}</span></div>
+        <div><span class="font-black">${data.value} ${lx.translateFactSheetType(_factSheetType, data.value === 1 ? 'singular' : 'plural')} (${taggingPercentage}%)</span></div>
         <div>${data.value === 1 ? 'is' : 'are'} non-exclusively tagged as</div>
         <div><span class="font-black">${data.target}</span></div>
       </div>
