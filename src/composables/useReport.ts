@@ -21,6 +21,8 @@ const filter: Ref<Filter | null> = ref(null)
 const chartData: Ref<ChartSankeyConfig | null> = ref(null)
 // holder for the factsheet index
 const factSheetIndex: Ref<Record<string, FactSheetNode>> = ref({})
+// holder for the untagged factsheet ids
+const untaggedFactSheetIds: Ref<string[]> = ref([])
 
 // report settings
 const showUntaggedFactSheets: Ref<boolean> = ref(false)
@@ -203,12 +205,21 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
     if (!Array.isArray(taggedFactSheetsFilter.facetFilters)) taggedFactSheetsFilter.facetFilters = []
     if (requiredTags !== null) taggedFactSheetsFilter.facetFilters.push({ facetKey: tagGroupId, keys: requiredTags })
 
-    const variables = JSON.stringify({ allFactSheetsFilter, taggedFactSheetsFilter })
+    const untaggedFactSheetsFilter = cloneDeep(allFactSheetsFilter)
+    if (!Array.isArray(untaggedFactSheetsFilter.facetFilters)) untaggedFactSheetsFilter.facetFilters = []
+    untaggedFactSheetsFilter.facetFilters.push({ facetKey: tagGroupId, keys: ['__missing__'] })
 
-    const { totalCount: totalFactSheetCount, taggedFactSheets }: { totalCount: number, taggedFactSheets: FactSheetNode[] } = await lx.executeGraphQL(query, variables)
-      .then(({ totalFactSheetCount: { totalCount }, taggedFactSheets: { edges: taggedFactSheets } }) => ({
+    const variables = JSON.stringify({ allFactSheetsFilter, taggedFactSheetsFilter, untaggedFactSheetsFilter })
+
+    const {
+      totalCount: totalFactSheetCount,
+      taggedFactSheets,
+      untaggedFactSheets
+    }: { totalCount: number, taggedFactSheets: FactSheetNode[], untaggedFactSheets: FactSheetNode[] } = await lx.executeGraphQL(query, variables)
+      .then(({ totalFactSheetCount: { totalCount }, taggedFactSheets: { edges: taggedFactSheets }, untaggedFactSheets: { edges: untaggedFactSheets } }) => ({
         totalCount,
-        taggedFactSheets: taggedFactSheets.map(({ node }: { node: any }) => node)
+        taggedFactSheets: taggedFactSheets.map(({ node }: { node: any }) => node),
+        untaggedFactSheets: untaggedFactSheets.map(({ node }: { node: any }) => node)
       }))
 
     // eslint-disable-next-line
@@ -234,7 +245,9 @@ const fetchDataset = async (params: FetchDatasetParameters): Promise<ChartSankey
       nodes.push({ name: untaggedName, color: 'black', type: '_UNTAGGED_' })
       accumulator[`${factSheetType}_MISSING_`] = { source: factSheetName, target: untaggedName, value: missingCount }
     }
-    factSheetIndex.value = taggedFactSheets.reduce((accumulator, factSheet) => ({ ...accumulator, [factSheet.id]: factSheet }), {})
+    factSheetIndex.value = [...taggedFactSheets, ...untaggedFactSheets].reduce((accumulator, factSheet) => ({ ...accumulator, [factSheet.id]: factSheet }), {})
+
+    untaggedFactSheetIds.value = untaggedFactSheets.map(({ id }) => id)
 
     const linkIndex: Record<string, ChartSankeyLinkData> = taggedFactSheets
       .reduce((accumulator, factSheet: FactSheetNode) => {
@@ -506,20 +519,7 @@ const clickHandler = async (e: ChartLinkEvent | ChartNodeEvent): Promise<void> =
     // @ts-expect-error
     if (e.key === 'Untagged' || e?.target.key === 'Untagged') {
       label = `Untagged ${lx.translateFactSheetType(unref(factSheetType) ?? '', 'plural')}`
-      const query = await import('@/graphql/FetchFactSheets.gql').then(query => print(query.default))
-      const variables = {
-        filter: {
-          facetFilters: [
-            { facetKey: 'FactSheetTypes', keys: [unref(factSheetType)] },
-            { facetKey: unref(selectedTagGroupId), keys: ['__missing__'] }
-          ]
-        }
-      }
-      const untaggedFactSheets = await lx.executeGraphQL(query, JSON.stringify(variables))
-        .then(({ allFactSheets }) => allFactSheets.edges.map(({ node }: { node: any }) => node))
-      factSheetIds = untaggedFactSheets.map(({ id }: { id: string }) => id)
-      const untaggedFactSheetsFragment = untaggedFactSheets.reduce((accumulator: any, factSheet: any) => ({ ...accumulator, [factSheet.id]: factSheet }), {})
-      factSheetIndex.value = { ...unref(factSheetIndex), ...untaggedFactSheetsFragment }
+      factSheetIds = unref(untaggedFactSheetIds)
     } else {
       label = e.key
       // @ts-expect-error
