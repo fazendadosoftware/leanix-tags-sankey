@@ -1,28 +1,28 @@
 {
-  "name": "leanix-tags-sankey",
-  "version": "0.0.0",
+  "name": "taggroup-flow-report",
+  "version": "0.1.0",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build --mode development",
     "upload": "vue-tsc --noEmit && vite build"
   },
   "dependencies": {
-    "vue": "^3.2.10",
-    "@leanix/reporting": "^0.4.87"
+    "@leanix/reporting": "^0.4.89",
+    "vue": "^3.2.10"
   },
   "devDependencies": {
-    "vite-plugin-lxr": "^0.0.2",
     "@vitejs/plugin-vue": "^1.6.2",
     "@vue/compiler-sfc": "^3.2.10",
     "typescript": "^4.4.2",
     "vite": "^2.5.6",
+    "vite-plugin-lxr": "^0.0.2",
     "vue-tsc": "^0.3.0"
   },
   "author": "Paulo dos Santos",
-  "description": "Sankey visualization of tagged factsheets",
+  "description": "Flow report for visualizing Tagged FactSheets of a given TagGroup",
   "leanixReport": {
     "id": "net.leanix.tags.sankey",
-    "title": "Tags Sankey Chart",
+    "title": "TagGroup Flow Report",
     "defaultConfig": {}
   }
 }
